@@ -112,6 +112,7 @@ implementation
 
 const
   MinViewSamples = 10;
+  MaxViewSamples = 2000000;  { ~5 sec @ 96 kHz; prevents OOM on zoom-out }
 
 constructor TSignalPlot.Create(APaintBox: TPaintBox);
 begin
@@ -202,7 +203,10 @@ begin
     FFullEnd := AEnd;
   end;
   FViewStart := FFullStart;
-  FViewEnd := FFullEnd;
+  if (FFullEnd - FFullStart) > MaxViewSamples then
+    FViewEnd := FFullStart + MaxViewSamples
+  else
+    FViewEnd := FFullEnd;
   RequestRepaint;
 end;
 
@@ -242,15 +246,29 @@ end;
 
 procedure TSignalPlot.ClampView;
 var
-  W: Int64;
+  W, Center: Int64;
 begin
-  W := ViewSampleCount;
+  W := FViewEnd - FViewStart;
+
+  { Limit minimum width }
   if W < MinViewSamples then
   begin
+    Center := (FViewStart + FViewEnd) div 2;
     W := MinViewSamples;
+    FViewStart := Center - W div 2;
     FViewEnd := FViewStart + W;
   end;
 
+  { Limit maximum width — prevents OOM when zooming out }
+  if W > MaxViewSamples then
+  begin
+    Center := (FViewStart + FViewEnd) div 2;
+    W := MaxViewSamples;
+    FViewStart := Center - W div 2;
+    FViewEnd := FViewStart + W;
+  end;
+
+  { Clamp to file bounds }
   if FViewStart < FFullStart then
   begin
     FViewStart := FFullStart;
@@ -265,8 +283,13 @@ begin
       FViewStart := FFullStart;
   end;
 
+  { Final safety clamp }
   if FViewStart < FFullStart then
     FViewStart := FFullStart;
+  if FViewEnd > FFullEnd then
+    FViewEnd := FFullEnd;
+  if FViewEnd - FViewStart < MinViewSamples then
+    FViewEnd := FViewStart + MinViewSamples;
   if FViewEnd > FFullEnd then
     FViewEnd := FFullEnd;
 end;
@@ -293,6 +316,9 @@ begin
   if PlotWidth <= 0 then
     Exit;
 
+  if (AX < 0) or (AX > PlotWidth) then
+    AX := PlotWidth / 2;
+
   if (FViewEnd > FViewStart) then
     SampleUnderCursor := FViewStart + (AX / PlotWidth) * (FViewEnd - FViewStart)
   else
@@ -301,6 +327,8 @@ begin
   NewWidth := (FViewEnd - FViewStart) * AFactor;
   if NewWidth < MinViewSamples then
     NewWidth := MinViewSamples;
+  if NewWidth > MaxViewSamples then
+    NewWidth := MaxViewSamples;
 
   NewStart := SampleUnderCursor - (AX / PlotWidth) * NewWidth;
 
@@ -359,6 +387,14 @@ procedure TSignalPlot.PaintBoxMouseMove(Sender: TObject; Shift: TShiftState;
   X, Y: Single);
 begin
   FLastMouseX := X;
+
+  { If the left button was released outside the paintbox, stop dragging }
+  if not (ssLeft in Shift) then
+  begin
+    FDragging := False;
+    Exit;
+  end;
+
   if not FDragging then
     Exit;
 

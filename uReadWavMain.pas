@@ -31,6 +31,7 @@ type
     LayIMG: TLayout;
     LayNavi: TLayout;
     edEndSample: TEdit;
+    OverviewPaintBox: TPaintBox;
     procedure FSelectRangeButtonClick(Sender: TObject);
     procedure FAnalyzeButtonClick(Sender: TObject);
     procedure FApplyButtonClick(Sender: TObject);
@@ -81,6 +82,7 @@ type
     procedure SetAnalysisUiState(Analyzing: Boolean);
     procedure UpdatePlotMode;
     procedure PlotViewChanged(Sender: TObject; ViewStart, ViewEnd: Int64);
+//    function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; var Handled: Boolean): Boolean; override;
   public
   end;
 
@@ -93,6 +95,59 @@ uses
   System.Math;
 
 {$R *.fmx}
+procedure TMainForm.FormCreate(Sender: TObject);
+begin
+  Caption := 'EOD Viewer';
+  Position := TFormPosition.ScreenCenter;
+
+  FConfig := DefaultEodDetectorConfig;
+  FSession := TEodGuiSession.Create;
+  FDetector := TEodDetector.Create(FConfig);
+
+  FCurrentPeak := -1;
+  FAnalysis := nil;
+  FOpenThread := nil;
+  FClosing := False;
+
+  FModeBox.Items.Clear;
+  FModeBox.Items.Add('RAW - 4 channels');
+  FModeBox.Items.Add('STD');
+  FModeBox.Items.Add('FIR15');
+  FModeBox.Items.Add('RAW + FIR15');
+  FModeBox.Items.Add('RAW channels separate');
+  FModeBox.Items.Add('IPI histogram');
+
+//RAW (4 channels)
+//STD
+//FIR15
+//RAW + FIR15
+//RAW channels separate
+//IPI histogram
+
+  FModeBox.ItemIndex := 0;
+
+  FPlot := TSignalPlot.Create(PaintBox);
+  FPlot.OnViewChanged := PlotViewChanged;
+end;
+
+procedure TMainForm.FormDestroy(Sender: TObject);
+begin
+  FClosing := True;
+
+  { Normally FAnalysis is already nil here. The close query prevents us
+    from reaching FormDestroy while a worker is active. }
+  if Assigned(FAnalysis) then
+    FAnalysis.Cancel;
+  if Assigned(FOpenThread) then
+    FOpenThread.Cancel;
+
+  FPlot.Free;
+  FPlot := nil;
+
+  FDetector.Free;
+  FSession.Free;
+end;
+
 
 procedure TMainForm.AnalysisFinished(Sender: TObject;
   const Peaks: TPeakArray; Canceled: Boolean; const ErrorText: string);
@@ -219,6 +274,8 @@ begin
 
   OldSession := FSession;
   FSession := Session;
+  if FSession.TotalFrames > 0 then
+    FPlot.SetFullRange(0, FSession.TotalFrames - 1);
   OldSession.Free;
 
   FSession.SetPeaks(nil);
@@ -233,8 +290,6 @@ begin
   edRange.Text := '200';
 
   ShowRawPosition(0, 200);
-
-  FPlot.SetFullRange(0, FSession.TotalFrames - 1);
 
   UpdateStatus(Format(
     'WAV: %.3f sec, %d Hz, %d frames',
@@ -286,58 +341,6 @@ begin
 
 end;
 
-procedure TMainForm.FormCreate(Sender: TObject);
-begin
-  Caption := 'EOD Viewer';
-  Position := TFormPosition.ScreenCenter;
-
-  FConfig := DefaultEodDetectorConfig;
-  FSession := TEodGuiSession.Create;
-  FDetector := TEodDetector.Create(FConfig);
-
-  FCurrentPeak := -1;
-  FAnalysis := nil;
-  FOpenThread := nil;
-  FClosing := False;
-
-  FModeBox.Items.Clear;
-  FModeBox.Items.Add('RAW - 4 channels');
-  FModeBox.Items.Add('STD');
-  FModeBox.Items.Add('FIR15');
-  FModeBox.Items.Add('RAW + FIR15');
-  FModeBox.Items.Add('RAW channels separate');
-  FModeBox.Items.Add('IPI histogram');
-
-//RAW (4 channels)
-//STD
-//FIR15
-//RAW + FIR15
-//RAW channels separate
-//IPI histogram
-
-  FModeBox.ItemIndex := 0;
-
-  FPlot := TSignalPlot.Create(PaintBox);
-  FPlot.OnViewChanged := PlotViewChanged;
-end;
-
-procedure TMainForm.FormDestroy(Sender: TObject);
-begin
-  FClosing := True;
-
-  { Normally FAnalysis is already nil here. The close query prevents us
-    from reaching FormDestroy while a worker is active. }
-  if Assigned(FAnalysis) then
-    FAnalysis.Cancel;
-  if Assigned(FOpenThread) then
-    FOpenThread.Cancel;
-
-  FPlot.Free;
-  FPlot := nil;
-
-  FDetector.Free;
-  FSession.Free;
-end;
 
 procedure TMainForm.UpdateStatus(const S: string);
 begin
@@ -783,6 +786,10 @@ begin
       Exit;
 
     FSession.OpenPeakFile(D.FileName);
+
+if FSession.TotalFrames > 0 then
+  FPlot.SetFullRange(0, FSession.TotalFrames - 1);
+
     FCurrentPeak := -1;
 
     FillPeakList;
@@ -798,13 +805,13 @@ begin
       edStartSample.Text := StartFrame.ToString;
       edRange.Text := EndFrame.ToString;
       ShowPeakFileRange(StartFrame, EndFrame);
-          FPlot.SetFullRange(0, FSession.TotalFrames - 1);
+
     end
     else
     begin
       edStartSample.Text := '0';
       edRange.Text := '200';
-          FPlot.SetFullRange(0, FSession.TotalFrames - 1);
+
     end;
 
 //    UpdateStatus(Format(

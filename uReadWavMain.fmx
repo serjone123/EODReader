@@ -159,7 +159,7 @@ object MainForm: TMainForm
     object PaintBox: TPaintBox
       Align = Client
       Size.Width = 574.000000000000000000
-      Size.Height = 400.000000000000000000
+      Size.Height = 350.000000000000000000
       Size.PlatformDefault = False
     end
     object LayNavi: TLayout
@@ -254,6 +254,13 @@ object MainForm: TMainForm
       Size.PlatformDefault = False
       TabOrder = 1
       OnChange = FPositionBarChange
+    end
+    object OverviewPaintBox: TPaintBox
+      Align = Bottom
+      Position.Y = 383.000000000000000000
+      Size.Width = 574.000000000000000000
+      Size.Height = 50.000000000000000000
+      Size.PlatformDefault = False
     end
   end
 end
