@@ -5,7 +5,7 @@ interface
 uses
   System.SysUtils, System.Types, System.UITypes, System.Math,
   FMX.Types, FMX.Objects, FMX.Graphics,
-  Eod.Types, System.Classes;
+  Eod.Types, System.Classes, System.Generics.Collections;
 
 type
   TPlotMode = (
@@ -18,6 +18,46 @@ type
   );
 
   TViewChangedEvent = procedure(Sender: TObject; ViewStart, ViewEnd: Int64) of object;
+
+  TOverviewClickEvent = procedure(Sender: TObject; Frame: Int64) of object;
+
+  TOverviewPlot = class
+  private
+    FPaintBox: TPaintBox;
+
+    FMinValues: TFloatArray;
+    FMaxValues: TFloatArray;
+
+    FFullStart: Int64;
+    FFullEnd: Int64;
+
+    FViewStart: Int64;
+    FViewEnd: Int64;
+
+    FOnClick: TOverviewClickEvent;
+
+    procedure PaintBoxPaint(Sender: TObject; Canvas: TCanvas);
+    procedure PaintBoxMouseDown(Sender: TObject;
+      Button: TMouseButton; Shift: TShiftState; X, Y: Single);
+
+    function MapX(Frame: Int64; const R: TRectF): Single;
+    function MapY(Value, MinY, MaxY: Double;
+      const R: TRectF): Single;
+
+  public
+    constructor Create(APaintBox: TPaintBox);
+    destructor Destroy; override;
+
+    procedure Clear;
+
+    procedure SetData(
+      const AMinValues, AMaxValues: TFloatArray;
+      AFullStart, AFullEnd: Int64);
+
+    procedure SetViewRange(AStart, AEnd: Int64);
+
+    property OnClick: TOverviewClickEvent read FOnClick write FOnClick;
+  end;
 
   TSignalPlot = class
   private
@@ -136,11 +176,21 @@ begin
   FFullEnd := 0;
   FViewStart := 0;
   FViewEnd := 0;
-  FLastMouseX := 0;
+//  FLastMouseX := 0;
+  FLastMouseX := FPaintBox.Width / 2
 end;
 
 destructor TSignalPlot.Destroy;
 begin
+  if Assigned(FPaintBox) then
+  begin
+    FPaintBox.OnPaint := nil;
+    FPaintBox.OnMouseDown := nil;
+    FPaintBox.OnMouseMove := nil;
+    FPaintBox.OnMouseUp := nil;
+    FPaintBox.OnMouseWheel := nil;
+  end;
+
   FPaintBox := nil;
   inherited;
 end;
@@ -476,7 +526,7 @@ begin
       S,
       False,
       1,
-      [TFillTextFlag.RightToLeft],
+      [],
       TTextAlign.Trailing,
       TTextAlign.Center);
   end;
@@ -508,7 +558,7 @@ begin
       S,
       False,
       1,
-      [TFillTextFlag.RightToLeft],
+      [],
       TTextAlign.Center,
       TTextAlign.Center);
   end;
@@ -541,7 +591,7 @@ begin
       S,
       False,
       1,
-      [TFillTextFlag.RightToLeft],
+      [],
       TTextAlign.Center,
       TTextAlign.Center);
   end;
@@ -890,7 +940,7 @@ begin
     Title := Format('Channel %d', [Ch + 1]);
     Canvas.FillText(
       RectF(CR.Left + 3, CR.Top + 2, CR.Left + 95, CR.Top + 18),
-      Title, False, 1, [TFillTextFlag.RightToLeft],
+      Title, False, 1, [],
       TTextAlign.Leading, TTextAlign.Center);
   end;
 
@@ -1002,6 +1052,7 @@ begin
 
   BinWidth := R.Width / NumBins;
   Canvas.Fill.Color := TAlphaColorRec.Navy;
+  Canvas.Fill.Kind := TBrushKind.Solid;
   for I := 0 to NumBins - 1 do
   begin
     if Bins[I] = 0 then
@@ -1009,9 +1060,11 @@ begin
     X := R.Left + I * BinWidth;
     H := Bins[I] / MaxCount * R.Height;
     Y := R.Bottom - H;
-    Canvas.FillRect(
-      RectF(X + 1, Y, X + BinWidth - 1, R.Bottom),
-      0, 0, [], 1);
+//    Canvas.FillRect(RectF(X + 1, Y, X + BinWidth - 1, R.Bottom), 0, 0, [], 1);
+    if BinWidth < 2 then
+      Canvas.FillRect(RectF(X, Y, X + BinWidth, R.Bottom), 0, 0, [], 1)
+    else
+      Canvas.FillRect(RectF(X + 1, Y, X + BinWidth - 1, R.Bottom), 0, 0, [], 1);
   end;
 
   Canvas.Fill.Color := TAlphaColorRec.Gray;
@@ -1023,7 +1076,7 @@ begin
     S := FormatFloat('0.0', Ms) + ' ms';
     Canvas.FillText(
       RectF(X - 35, R.Bottom + 3, X + 35, R.Bottom + 19),
-      S, False, 1, [TFillTextFlag.RightToLeft],
+      S, False, 1, [],
       TTextAlign.Center, TTextAlign.Center);
   end;
   for I := 0 to 5 do
@@ -1032,7 +1085,7 @@ begin
     Y := R.Bottom - I * R.Height / 5;
     Canvas.FillText(
       RectF(2, Y - 9, R.Left - 4, Y + 9),
-      S, False, 1, [TFillTextFlag.RightToLeft],
+      S, False, 1, [],
       TTextAlign.Trailing, TTextAlign.Center);
   end;
 end;
@@ -1079,7 +1132,7 @@ begin
   Canvas.Font.Size := 13;
   Canvas.FillText(
     RectF(4, 2, FPaintBox.Width - 4, 22),
-    PlotTitle, False, 1, [TFillTextFlag.RightToLeft],
+    PlotTitle, False, 1, [],
     TTextAlign.Leading, TTextAlign.Center);
 
   case FMode of
@@ -1103,7 +1156,7 @@ begin
     Canvas.Font.Size := 11;
     Canvas.FillText(
       RectF(MarginL, FPaintBox.Height - 22, FPaintBox.Width - 5, FPaintBox.Height),
-      S, False, 1, [TFillTextFlag.RightToLeft],
+      S, False, 1, [],
       TTextAlign.Leading, TTextAlign.Center);
     Exit;
   end;
@@ -1134,7 +1187,7 @@ begin
     Canvas.Font.Size := 11;
     Canvas.FillText(
       RectF(MarginL, FPaintBox.Height - 22, FPaintBox.Width - 5, FPaintBox.Height),
-      S, False, 1, [TFillTextFlag.RightToLeft],
+      S, False, 1, [],
       TTextAlign.Leading, TTextAlign.Center);
     Exit;
   end;
@@ -1259,7 +1312,7 @@ begin
   Canvas.Font.Size := 11;
   Canvas.FillText(
     RectF(MarginL, FPaintBox.Height - 22, FPaintBox.Width - 5, FPaintBox.Height),
-    S, False, 1, [TFillTextFlag.RightToLeft],
+    S, False, 1, [],
     TTextAlign.Leading, TTextAlign.Center);
 end;
 
@@ -1355,6 +1408,313 @@ begin
   else
     FSelectedOffset := -1;
   RequestRepaint;
+end;
+
+{ ------------------------------------------------------------------ }
+{ TOverviewPlot                                                      }
+{ ------------------------------------------------------------------ }
+
+constructor TOverviewPlot.Create(APaintBox: TPaintBox);
+begin
+  inherited Create;
+
+  if not Assigned(APaintBox) then
+    raise EArgumentNilException.Create(
+      'TOverviewPlot requires a TPaintBox');
+
+  FPaintBox := APaintBox;
+
+  FPaintBox.OnPaint := PaintBoxPaint;
+  FPaintBox.OnMouseDown := PaintBoxMouseDown;
+  FPaintBox.HitTest := True;
+
+  FFullStart := 0;
+  FFullEnd := 0;
+  FViewStart := 0;
+  FViewEnd := 0;
+end;
+
+destructor TOverviewPlot.Destroy;
+begin
+  if Assigned(FPaintBox) then
+  begin
+    FPaintBox.OnPaint := nil;
+    FPaintBox.OnMouseDown := nil;
+  end;
+
+  FPaintBox := nil;
+  inherited;
+end;
+
+procedure TOverviewPlot.Clear;
+begin
+  SetLength(FMinValues, 0);
+  SetLength(FMaxValues, 0);
+
+  FFullStart := 0;
+  FFullEnd := 0;
+  FViewStart := 0;
+  FViewEnd := 0;
+
+  if Assigned(FPaintBox) then
+    FPaintBox.Repaint;
+end;
+
+procedure TOverviewPlot.SetData(
+  const AMinValues, AMaxValues: TFloatArray;
+  AFullStart, AFullEnd: Int64);
+begin
+  FMinValues := Copy(AMinValues);
+  FMaxValues := Copy(AMaxValues);
+
+  FFullStart := AFullStart;
+  FFullEnd := AFullEnd;
+
+  if FFullEnd < FFullStart then
+  begin
+    FFullStart := 0;
+    FFullEnd := 0;
+  end;
+
+  if Assigned(FPaintBox) then
+    FPaintBox.Repaint;
+end;
+
+procedure TOverviewPlot.SetViewRange(
+  AStart, AEnd: Int64);
+begin
+  FViewStart := AStart;
+  FViewEnd := AEnd;
+
+  if FViewStart < FFullStart then
+    FViewStart := FFullStart;
+
+  if FViewEnd > FFullEnd then
+    FViewEnd := FFullEnd;
+
+  if Assigned(FPaintBox) then
+    FPaintBox.Repaint;
+end;
+
+function TOverviewPlot.MapX(
+  Frame: Int64;
+  const R: TRectF): Single;
+begin
+  if FFullEnd <= FFullStart then
+    Exit(R.Left);
+
+  Result :=
+    R.Left +
+    ((Frame - FFullStart) /
+     (FFullEnd - FFullStart)) *
+    R.Width;
+end;
+
+function TOverviewPlot.MapY(
+  Value, MinY, MaxY: Double;
+  const R: TRectF): Single;
+begin
+  if SameValue(MaxY, MinY) then
+    Exit(R.CenterPoint.Y);
+
+  Result :=
+    R.Bottom -
+    ((Value - MinY) /
+     (MaxY - MinY)) *
+    R.Height;
+end;
+
+procedure TOverviewPlot.PaintBoxPaint(
+  Sender: TObject;
+  Canvas: TCanvas);
+var
+  R: TRectF;
+  I, N: Integer;
+  X: Single;
+  YMin, YMax: Double;
+  Y1, Y2: Single;
+  ViewLeft, ViewRight: Single;
+begin
+//  Canvas.Clear(TAlphaColorRec.White);
+Canvas.Fill.Kind := TBrushKind.Solid;
+Canvas.Fill.Color := TAlphaColorRec.White;
+Canvas.FillRect(RectF(0, 0, FPaintBox.Width, FPaintBox.Height), 0, 0, [], 1);
+
+  if (Length(FMinValues) = 0) or
+     (Length(FMaxValues) = 0) or
+     (FFullEnd <= FFullStart) then
+    Exit;
+
+  R := RectF(
+    2,
+    2,
+    FPaintBox.Width - 2,
+    FPaintBox.Height - 2);
+
+  if (R.Width <= 0) or (R.Height <= 0) then
+    Exit;
+
+  N := Min(
+    Length(FMinValues),
+    Length(FMaxValues));
+
+  if N <= 0 then
+    Exit;
+
+  { Find global Y range }
+  YMin := FMinValues[0];
+  YMax := FMaxValues[0];
+
+  for I := 1 to N - 1 do
+  begin
+    if FMinValues[I] < YMin then
+      YMin := FMinValues[I];
+
+    if FMaxValues[I] > YMax then
+      YMax := FMaxValues[I];
+  end;
+
+  if SameValue(YMin, YMax) then
+  begin
+    YMin := YMin - 1;
+    YMax := YMax + 1;
+  end;
+
+  { Zero line }
+  if (YMin <= 0) and (YMax >= 0) then
+  begin
+    Canvas.Stroke.Kind := TBrushKind.Solid;
+    Canvas.Stroke.Color := TAlphaColorRec.Lightgray;
+    Canvas.Stroke.Thickness := 1;
+
+    Y1 := MapY(0, YMin, YMax, R);
+
+    Canvas.DrawLine(
+      PointF(R.Left, Y1),
+      PointF(R.Right, Y1),
+      1);
+  end;
+
+  { Signal envelope }
+  Canvas.Stroke.Kind := TBrushKind.Solid;
+  Canvas.Stroke.Color := TAlphaColorRec.Gray;
+  Canvas.Stroke.Thickness := 1;
+
+  if N = 1 then
+  begin
+    X := R.CenterPoint.X;
+
+    Canvas.DrawLine(
+      PointF(X, MapY(FMinValues[0], YMin, YMax, R)),
+      PointF(X, MapY(FMaxValues[0], YMin, YMax, R)),
+      1);
+  end
+  else
+  begin
+    for I := 0 to N - 1 do
+    begin
+      X :=
+        R.Left +
+        I / (N - 1) * R.Width;
+
+      Y1 := MapY(
+        FMinValues[I],
+        YMin,
+        YMax,
+        R);
+
+      Y2 := MapY(
+        FMaxValues[I],
+        YMin,
+        YMax,
+        R);
+
+      Canvas.DrawLine(
+        PointF(X, Y1),
+        PointF(X, Y2),
+        1);
+    end;
+  end;
+
+  { Current visible range }
+  ViewLeft := MapX(FViewStart, R);
+  ViewRight := MapX(FViewEnd, R);
+
+  if ViewRight < ViewLeft then
+    begin
+     // Swap(ViewLeft, ViewRight);
+      var temp := ViewLeft  ;
+      ViewLeft := ViewRight;
+      ViewRight:= temp
+    end;
+
+
+  Canvas.Stroke.Kind := TBrushKind.Solid;
+  Canvas.Stroke.Color := TAlphaColorRec.Red;
+  Canvas.Stroke.Thickness := 2;
+
+  Canvas.DrawRect(
+    RectF(
+      ViewLeft,
+      R.Top,
+      ViewRight,
+      R.Bottom),
+    0,
+    0,
+    AllCorners,
+    1);
+end;
+
+procedure TOverviewPlot.PaintBoxMouseDown(
+  Sender: TObject;
+  Button: TMouseButton;
+  Shift: TShiftState;
+  X, Y: Single);
+var
+  R: TRectF;
+  P: Double;
+  Frame: Int64;
+begin
+  if Button <> TMouseButton.mbLeft then
+    Exit;
+
+  if (FFullEnd <= FFullStart) then
+    Exit;
+
+  R := RectF(
+    2,
+    2,
+    FPaintBox.Width - 2,
+    FPaintBox.Height - 2);
+
+  if R.Width <= 0 then
+    Exit;
+
+  if X < R.Left then
+    X := R.Left;
+
+  if X > R.Right then
+    X := R.Right;
+
+  P := (X - R.Left) / R.Width;
+
+  if P < 0 then
+    P := 0
+  else if P > 1 then
+    P := 1;
+
+  Frame :=
+    FFullStart +
+    Round(P * (FFullEnd - FFullStart));
+
+  if Frame < FFullStart then
+    Frame := FFullStart;
+
+  if Frame > FFullEnd then
+    Frame := FFullEnd;
+
+  if Assigned(FOnClick) then
+    FOnClick(Self, Frame);
 end;
 
 end.
