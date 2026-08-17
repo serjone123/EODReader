@@ -42,7 +42,7 @@ object MainForm: TMainForm
       Size.Width = 80.000000000000000000
       Size.Height = 26.000000000000000000
       Size.PlatformDefault = False
-      TabOrder = 6
+      TabOrder = 5
       Text = 'OpenPeak'
       TextSettings.Trimming = None
       OnClick = FOpenPeakButtonClick
@@ -57,7 +57,7 @@ object MainForm: TMainForm
       Size.Width = 80.000000000000000000
       Size.Height = 26.000000000000000000
       Size.PlatformDefault = False
-      TabOrder = 5
+      TabOrder = 4
       Text = 'Analyze'
       TextSettings.Trimming = None
       OnClick = FAnalyzeButtonClick
@@ -72,7 +72,7 @@ object MainForm: TMainForm
       Size.Width = 80.000000000000000000
       Size.Height = 26.000000000000000000
       Size.PlatformDefault = False
-      TabOrder = 4
+      TabOrder = 3
       Text = 'Save'
       TextSettings.Trimming = None
       OnClick = FSaveButtonClick
@@ -87,7 +87,7 @@ object MainForm: TMainForm
       Size.Width = 80.000000000000000000
       Size.Height = 26.000000000000000000
       Size.PlatformDefault = False
-      TabOrder = 3
+      TabOrder = 2
       Text = 'Prev'
       TextSettings.Trimming = None
       OnClick = FPrevButtonClick
@@ -102,25 +102,10 @@ object MainForm: TMainForm
       Size.Width = 80.000000000000000000
       Size.Height = 26.000000000000000000
       Size.PlatformDefault = False
-      TabOrder = 2
+      TabOrder = 1
       Text = 'Next'
       TextSettings.Trimming = None
       OnClick = FNextButtonClick
-    end
-    object FSelectRangeButton: TButton
-      Align = Left
-      Margins.Left = 4.000000000000000000
-      Margins.Top = 4.000000000000000000
-      Margins.Bottom = 4.000000000000000000
-      Position.X = 508.000000000000000000
-      Position.Y = 4.000000000000000000
-      Size.Width = 80.000000000000000000
-      Size.Height = 26.000000000000000000
-      Size.PlatformDefault = False
-      TabOrder = 1
-      Text = 'Range'
-      TextSettings.Trimming = None
-      OnClick = FSelectRangeButtonClick
     end
   end
   object FPeakList: TListBox

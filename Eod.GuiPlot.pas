@@ -21,6 +21,9 @@ type
 
   TOverviewClickEvent = procedure(Sender: TObject; Frame: Int64) of object;
 
+  TOverviewRangeSelectedEvent = procedure(Sender: TObject;
+    AStart, AEnd: Int64) of object;
+
   TOverviewPlot = class
   private
     FPaintBox: TPaintBox;
@@ -35,14 +38,28 @@ type
     FViewEnd: Int64;
 
     FOnClick: TOverviewClickEvent;
+    FOnRangeSelected: TOverviewRangeSelectedEvent;
+
+    { Drag-selection state }
+    FDragging: Boolean;
+    FDragIsSelection: Boolean;
+    FDragStartX: Single;
+    FDragStartFrame: Int64;
+    FDragCurrentFrame: Int64;
 
     procedure PaintBoxPaint(Sender: TObject; Canvas: TCanvas);
     procedure PaintBoxMouseDown(Sender: TObject;
+      Button: TMouseButton; Shift: TShiftState; X, Y: Single);
+    procedure PaintBoxMouseMove(Sender: TObject;
+      Shift: TShiftState; X, Y: Single);
+    procedure PaintBoxMouseUp(Sender: TObject;
       Button: TMouseButton; Shift: TShiftState; X, Y: Single);
 
     function MapX(Frame: Int64; const R: TRectF): Single;
     function MapY(Value, MinY, MaxY: Double;
       const R: TRectF): Single;
+    function XToFrame(X: Single; const R: TRectF): Int64;
+    function GetPlotRect: TRectF;
 
   public
     constructor Create(APaintBox: TPaintBox);
@@ -57,6 +74,8 @@ type
     procedure SetViewRange(AStart, AEnd: Int64);
 
     property OnClick: TOverviewClickEvent read FOnClick write FOnClick;
+    property OnRangeSelected: TOverviewRangeSelectedEvent
+      read FOnRangeSelected write FOnRangeSelected;
   end;
 
   TSignalPlot = class
@@ -1426,12 +1445,17 @@ begin
 
   FPaintBox.OnPaint := PaintBoxPaint;
   FPaintBox.OnMouseDown := PaintBoxMouseDown;
+  FPaintBox.OnMouseMove := PaintBoxMouseMove;
+  FPaintBox.OnMouseUp := PaintBoxMouseUp;
   FPaintBox.HitTest := True;
 
   FFullStart := 0;
   FFullEnd := 0;
   FViewStart := 0;
   FViewEnd := 0;
+
+  FDragging := False;
+  FDragIsSelection := False;
 end;
 
 destructor TOverviewPlot.Destroy;
@@ -1440,6 +1464,8 @@ begin
   begin
     FPaintBox.OnPaint := nil;
     FPaintBox.OnMouseDown := nil;
+    FPaintBox.OnMouseMove := nil;
+    FPaintBox.OnMouseUp := nil;
   end;
 
   FPaintBox := nil;
@@ -1496,6 +1522,15 @@ begin
     FPaintBox.Repaint;
 end;
 
+function TOverviewPlot.GetPlotRect: TRectF;
+begin
+  Result := RectF(
+    2,
+    2,
+    FPaintBox.Width - 2,
+    FPaintBox.Height - 2);
+end;
+
 function TOverviewPlot.MapX(
   Frame: Int64;
   const R: TRectF): Single;
@@ -1508,6 +1543,32 @@ begin
     ((Frame - FFullStart) /
      (FFullEnd - FFullStart)) *
     R.Width;
+end;
+
+function TOverviewPlot.XToFrame(X: Single; const R: TRectF): Int64;
+var
+  P: Double;
+begin
+  if R.Width <= 0 then
+    Exit(FFullStart);
+
+  if X < R.Left then
+    X := R.Left;
+  if X > R.Right then
+    X := R.Right;
+
+  P := (X - R.Left) / R.Width;
+  if P < 0 then
+    P := 0
+  else if P > 1 then
+    P := 1;
+
+  Result := FFullStart + Round(P * (FFullEnd - FFullStart));
+
+  if Result < FFullStart then
+    Result := FFullStart;
+  if Result > FFullEnd then
+    Result := FFullEnd;
 end;
 
 function TOverviewPlot.MapY(
@@ -1663,6 +1724,33 @@ Canvas.FillRect(RectF(0, 0, FPaintBox.Width, FPaintBox.Height), 0, 0, [], 1);
     0,
     AllCorners,
     1);
+
+  { Range currently being dragged by the mouse (drawn on top). }
+  if FDragging and FDragIsSelection then
+  begin
+    var SelLeft := MapX(FDragStartFrame, R);
+    var SelRight := MapX(FDragCurrentFrame, R);
+
+    if SelRight < SelLeft then
+    begin
+      var Temp := SelLeft;
+      SelLeft := SelRight;
+      SelRight := Temp;
+    end;
+
+    Canvas.Fill.Kind := TBrushKind.Solid;
+    Canvas.Fill.Color := TAlphaColor($4000A0FF);
+    Canvas.FillRect(
+      RectF(SelLeft, R.Top, SelRight, R.Bottom),
+      0, 0, [], 1);
+
+    Canvas.Stroke.Kind := TBrushKind.Solid;
+    Canvas.Stroke.Color := TAlphaColor($FF1E90FF);
+    Canvas.Stroke.Thickness := 2;
+    Canvas.DrawRect(
+      RectF(SelLeft, R.Top, SelRight, R.Bottom),
+      0, 0, AllCorners, 1);
+  end;
 end;
 
 procedure TOverviewPlot.PaintBoxMouseDown(
@@ -1672,7 +1760,6 @@ procedure TOverviewPlot.PaintBoxMouseDown(
   X, Y: Single);
 var
   R: TRectF;
-  P: Double;
   Frame: Int64;
 begin
   if Button <> TMouseButton.mbLeft then
@@ -1681,40 +1768,108 @@ begin
   if (FFullEnd <= FFullStart) then
     Exit;
 
-  R := RectF(
-    2,
-    2,
-    FPaintBox.Width - 2,
-    FPaintBox.Height - 2);
+  R := GetPlotRect;
 
   if R.Width <= 0 then
     Exit;
 
-  if X < R.Left then
-    X := R.Left;
+  Frame := XToFrame(X, R);
 
-  if X > R.Right then
-    X := R.Right;
+  { Start tracking a potential drag-selection. Whether it turns into a
+    plain click or a range selection is decided in MouseUp, based on
+    whether the cursor actually moved. }
+  FDragging := True;
+  FDragIsSelection := False;
+  FDragStartX := X;
+  FDragStartFrame := Frame;
+  FDragCurrentFrame := Frame;
+end;
 
-  P := (X - R.Left) / R.Width;
+procedure TOverviewPlot.PaintBoxMouseMove(
+  Sender: TObject;
+  Shift: TShiftState;
+  X, Y: Single);
+const
+  DragThresholdPx = 3;
+var
+  R: TRectF;
+begin
+  if not (ssLeft in Shift) then
+  begin
+    FDragging := False;
+    Exit;
+  end;
 
-  if P < 0 then
-    P := 0
-  else if P > 1 then
-    P := 1;
+  if not FDragging then
+    Exit;
 
-  Frame :=
-    FFullStart +
-    Round(P * (FFullEnd - FFullStart));
+  if (FFullEnd <= FFullStart) then
+    Exit;
 
-  if Frame < FFullStart then
-    Frame := FFullStart;
+  R := GetPlotRect;
+  if R.Width <= 0 then
+    Exit;
 
-  if Frame > FFullEnd then
-    Frame := FFullEnd;
+  if not FDragIsSelection then
+  begin
+    if Abs(X - FDragStartX) < DragThresholdPx then
+      Exit;
+    FDragIsSelection := True;
+  end;
 
-  if Assigned(FOnClick) then
-    FOnClick(Self, Frame);
+  FDragCurrentFrame := XToFrame(X, R);
+
+  if Assigned(FPaintBox) then
+    FPaintBox.Repaint;
+end;
+
+procedure TOverviewPlot.PaintBoxMouseUp(
+  Sender: TObject;
+  Button: TMouseButton;
+  Shift: TShiftState;
+  X, Y: Single);
+var
+  R: TRectF;
+  SelStart, SelEnd: Int64;
+begin
+  if Button <> TMouseButton.mbLeft then
+    Exit;
+
+  if not FDragging then
+    Exit;
+
+  FDragging := False;
+
+  if (FFullEnd <= FFullStart) then
+    Exit;
+
+  R := GetPlotRect;
+  if R.Width <= 0 then
+    Exit;
+
+  if not FDragIsSelection then
+  begin
+    { Plain click, no drag: navigate. }
+    if Assigned(FOnClick) then
+      FOnClick(Self, FDragStartFrame);
+    Exit;
+  end;
+
+  { Drag finished: report the selected range. }
+  FDragIsSelection := False;
+
+  SelStart := FDragStartFrame;
+  SelEnd := XToFrame(X, R);
+
+  if SelEnd < SelStart then
+  begin
+    var Temp := SelStart;
+    SelStart := SelEnd;
+    SelEnd := Temp;
+  end;
+
+  if Assigned(FOnRangeSelected) then
+    FOnRangeSelected(Self, SelStart, SelEnd);
 end;
 
 end.

@@ -20,7 +20,6 @@ type
     FPrevButton: TButton;
     FNextButton: TButton;
     FApplyButton: TButton;
-    FSelectRangeButton: TButton;
     FPositionBar: TTrackBar;
     FPeakList: TListBox;
     edStartSample: TEdit;
@@ -34,7 +33,6 @@ type
     OverviewPaintBox: TPaintBox;
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
-    procedure FSelectRangeButtonClick(Sender: TObject);
     procedure FAnalyzeButtonClick(Sender: TObject);
     procedure FApplyButtonClick(Sender: TObject);
     procedure FModeBoxChange(Sender: TObject);
@@ -50,6 +48,8 @@ type
     procedure FSaveButtonClick(Sender: TObject);
     procedure edStartSampleMouseWheel(Sender: TObject; Shift: TShiftState;
       WheelDelta: Integer; var Handled: Boolean);
+    procedure edStartSampleChange(Sender: TObject);
+    procedure edEndSampleChange(Sender: TObject);
   private
     FSession: TEodGuiSession;
     FDetector: TEodDetector;
@@ -75,6 +75,7 @@ type
     FWheelAccumulator: Integer;
 
     procedure OverviewClick(Sender: TObject; Frame: Int64);
+    procedure OverviewRangeSelected(Sender: TObject; AStart, AEnd: Int64);
 
     procedure BuildOverview;
 
@@ -88,7 +89,10 @@ type
     procedure ShowCurrentRange;
     function CurrentFrame: Int64;
     function ReadInt64Edit(AEdit: TEdit; const ADefault: Int64): Int64;
-    function ReadRange: Integer;
+    procedure SetRangeEdits(AStart, AEnd: Int64);
+    procedure UpdateRangeDisplay;
+    procedure PopulatePeakListRange(const Positions: TArray<Int64>;
+      L, R, Total: Integer);
     procedure FillPeakList;
     procedure StartAnalysis(MaxFrames: Int64);
     procedure AnalysisProgress(Sender: TObject; Processed, Total: Int64);
@@ -136,13 +140,6 @@ begin
   FModeBox.Items.Add('RAW channels separate');
   FModeBox.Items.Add('IPI histogram');
 
-//RAW (4 channels)
-//STD
-//FIR15
-//RAW + FIR15
-//RAW channels separate
-//IPI histogram
-
   FModeBox.ItemIndex := 0;
 
   FPlot := TSignalPlot.Create(PaintBox);
@@ -151,6 +148,14 @@ begin
 
   FOverview := TOverviewPlot.Create(OverviewPaintBox);
   FOverview.OnClick := OverviewClick;
+  FOverview.OnRangeSelected := OverviewRangeSelected;
+
+  { edRange is a derived/read-only indicator: End - Start.
+    Wired in code (not the .dfm) so this doesn't depend on the form
+    designer having these OnChange handlers assigned already. }
+  edRange.ReadOnly := True;
+  edStartSample.OnChange := edStartSampleChange;
+  edEndSample.OnChange := edEndSampleChange;
 
   FPeakListFirstIndex := 0;
   FPeakListRealCount := 0;
@@ -258,7 +263,7 @@ begin
   FApplyButton.Enabled := not Analyzing;
   FModeBox.Enabled := not Analyzing;
   edStartSample.Enabled := not Analyzing;
-  edRange.Enabled := not Analyzing;
+  edEndSample.Enabled := not Analyzing;
   FPositionBar.Enabled := not Analyzing;
 
   FAnalyzeButton.Enabled := True;
@@ -318,8 +323,7 @@ begin
   FillPeakList;
   SetAnalysisUiState(False);
 
-  edStartSample.Text := '0';
-  edRange.Text := '200';
+  SetRangeEdits(0, 200);
 
   ShowRawPosition(0, 200);
 
@@ -346,35 +350,13 @@ begin
 
   UpdateOverviewView(ViewStart, ViewEnd);
 
-  FUpdating := True;
-  try
-    edStartSample.Text := ViewStart.ToString;
-    edRange.Text := ViewEnd.ToString;
-  finally
-    FUpdating := False;
-  end;
+  SetRangeEdits(ViewStart, ViewEnd);
 
   if FSession.Mode = dmWav then
     ShowRawPosition(ViewStart, ViewEnd)
   else if FSession.Mode = dmPeakFile then
     ShowPeakFileRange(ViewStart, ViewEnd);
 end;
-
-procedure TMainForm.FSelectRangeButtonClick(Sender: TObject);
-var
-  SelectedStart, SelectedEnd: Int64;
-begin
-  SelectedStart := ReadInt64Edit(edStartSample, 0);
-  SelectedEnd := ReadInt64Edit(edRange, SelectedStart);
-
-  if FSession.TotalFrames > 0 then
-  begin
-    SelectedStart := EnsureRange(SelectedStart, Int64(0), FSession.TotalFrames - 1);
-    SelectedEnd := EnsureRange(SelectedEnd, SelectedStart, FSession.TotalFrames - 1);
-  end;
-
-end;
-
 
 procedure TMainForm.UpdateStatus(const S: string);
 begin
@@ -383,36 +365,21 @@ end;
 
 procedure TMainForm.FillPeakList;
 var
-  I, MaxPeaks: Integer;
-  P: TPeak;
-  Peaks: TPeakArray;
+  Positions: TArray<Int64>;
+  Total: Integer;
 begin
-  FPeakList.BeginUpdate;
-  try
+  if FSession.PeakCount <= 0 then
+  begin
     FPeakList.Clear;
-    MaxPeaks := Min(FSession.PeakCount, 1000);
-
-    if (FSession.Mode = dmPeakFile) and (MaxPeaks > 0) then
-    begin
-      if FSession.ReadPeakInfoPage(0, Peaks) then
-      begin
-        for I := 0 to Min(MaxPeaks, Length(Peaks)) - 1 do
-          FPeakList.Items.Add(Peaks[I].Position.ToString);
-      end;
-    end
-    else
-    begin
-      for I := 0 to MaxPeaks - 1 do
-      begin
-        if FSession.GetPeak(I, P) then
-          FPeakList.Items.Add(P.Position.ToString);
-      end;
-    end;
-  finally
     FPeakListFirstIndex := 0;
-    FPeakListRealCount := FPeakList.Items.Count;  // <<< FIX
-    FPeakList.EndUpdate;
+    FPeakListRealCount := 0;
+    Exit;
   end;
+
+  Positions := FSession.PeakPositions;
+  Total := Length(Positions);
+
+  PopulatePeakListRange(Positions, 0, Min(Total, 1000) - 1, Total);
 end;
 function TMainForm.ReadInt64Edit(AEdit: TEdit;
   const ADefault: Int64): Int64;
@@ -425,19 +392,44 @@ begin
     Result := ADefault;
 end;
 
-function TMainForm.ReadRange: Integer;
-var
-  V: Int64;
+procedure TMainForm.SetRangeEdits(AStart, AEnd: Int64);
 begin
-  V := ReadInt64Edit(edRange, 200);
+  if AEnd < AStart then
+    AEnd := AStart;
 
-  if V < 1 then
-    V := 1;
+  FUpdating := True;
+  try
+    edStartSample.Text := AStart.ToString;
+    edEndSample.Text := AEnd.ToString;
+    edRange.Text := (AEnd - AStart).ToString;
+  finally
+    FUpdating := False;
+  end;
+end;
 
-  if V > 1000000 then
-    V := 1000000;
+procedure TMainForm.UpdateRangeDisplay;
+var
+  S, E: Int64;
+begin
+  S := ReadInt64Edit(edStartSample, 0);
+  E := ReadInt64Edit(edEndSample, S);
+  if E < S then
+    E := S;
+  edRange.Text := (E - S).ToString;
+end;
 
-  Result := Integer(V);
+procedure TMainForm.edStartSampleChange(Sender: TObject);
+begin
+  if FUpdating then
+    Exit;
+  UpdateRangeDisplay;
+end;
+
+procedure TMainForm.edEndSampleChange(Sender: TObject);
+begin
+  if FUpdating then
+    Exit;
+  UpdateRangeDisplay;
 end;
 
 function TMainForm.CurrentFrame: Int64;
@@ -480,76 +472,7 @@ begin
 
   Handled := True;
 end;
-//procedure TMainForm.ShowPeak(Index: Integer);
-//var
-//  Peak: TPeak;
-//  StartFrame: Int64;
-//  Data: TAudioChunk;
-//  Std: TFloatArray;
-//  Fir: TFloatArray;
-//  Range: Integer;
-//  PeakPositions: TArray<Int64>;
-//begin
-//  if (Index < 0) or (Index >= FSession.PeakCount) then
-//    Exit;
-//
-////  FCurrentPeak := Index;
-//if (Index >= FPeakListFirstIndex) and
-//   (Index < FPeakListFirstIndex + FPeakList.Count) then
-//begin
-//  FPeakList.ItemIndex :=
-//    Index - FPeakListFirstIndex;
-//end;
-//
-//  if FSession.Mode = dmPeakFile then
-//    Data := FSession.ReadPeak(Index, Peak, StartFrame)
-//  else
-//  begin
-//    if not FSession.GetPeak(Index, Peak) then
-//      Exit;
-//    Range := 30;
-//    StartFrame := Peak.Position - Range;
-//    Data := FSession.ReadSegment(StartFrame, Range * 2 + 1, True);
-//  end;
-//
-//  FCurrentStart := StartFrame;
-//  FCurrentCount := Length(Data);
-//
-//  edStartSample.Text := Peak.Position.ToString;
-////  FPeakList.ItemIndex := Index;
-//
-//  FCurrentPeak := Index;
-//
-//  FillPeakListAroundFrame(
-//    Peak.Position);
-//
-//  Std := FSession.CalculateStd(Data);
-//  Fir := FDetector.ApplyFir15(Std);
-//
-//  FPlot.SetChannels(
-//    Data, StartFrame, FSession.SampleRate, Peak.Position,
-//    Format('Peak #%d  sample %d',
-//      [Index + 1, Peak.Position]));
-//
-//  FPlot.SetStd(
-//    Std, StartFrame, FSession.SampleRate, Peak.Position,
-//    'STD around peak');
-//
-//  FPlot.SetFir(
-//    Fir, StartFrame, FSession.SampleRate, Peak.Position,
-//    'FIR15 around peak');
-//
-//  PeakPositions := FSession.PeakPositions;
-//  FPlot.SetPeakPositions(PeakPositions);
-//  UpdatePlotMode;
-//
-//  FPlot.SetViewRange(StartFrame, StartFrame + Length(Data) - 1);
-//
-//  UpdateStatus(Format(
-//    'Peak %d/%d: sample %d, time %.6f s, prominence %.6f',
-//    [Index + 1, FSession.PeakCount, Peak.Position,
-//     Peak.Position / FSession.SampleRate, Peak.Prominence]));
-//end;
+
 procedure TMainForm.ShowPeak(Index: Integer);
 var
   Peak: TPeak;
@@ -579,7 +502,7 @@ begin
   FCurrentStart := StartFrame;
   FCurrentCount := Length(Data);
 
-  edStartSample.Text := Peak.Position.ToString;
+  SetRangeEdits(StartFrame, StartFrame + Length(Data) - 1);
 
   FCurrentPeak := Index;
 
@@ -632,6 +555,8 @@ var
   Temp: TAudioChunk;
   PeakPositions: TArray<Int64>;
   FirstIdx, LastIdx: Integer;
+  SelCount: Integer;
+  CountText: string;
 begin
   if FSession.Mode <> dmPeakFile then
     Exit;
@@ -652,6 +577,7 @@ begin
 
   if FSession.FindPeakRangeIndices(StartFrame, EndFrame, 30, FirstIdx, LastIdx) then
   begin
+    SelCount := LastIdx - FirstIdx + 1;
     for I := FirstIdx to LastIdx do
     begin
       Temp := FSession.ReadPeak(I, Peak, PeakStart);
@@ -670,7 +596,9 @@ begin
       Move(Temp[Integer(SourceOffset)], Data[Integer(DestOffset)],
         Integer(CopyCount) * SizeOf(TAudioFrame));
     end;
-  end;
+  end
+  else
+    SelCount := 0;
 
   FCurrentStart := StartFrame;
   FCurrentCount := Length(Data);
@@ -696,13 +624,18 @@ begin
   FPlot.SetViewRange(StartFrame, EndFrame);
   FPlot.SetHistogramRange(StartFrame, EndFrame);
 
-  edStartSample.Text := StartFrame.ToString;
-  edRange.Text := EndFrame.ToString;
+  SetRangeEdits(StartFrame, EndFrame);
+
+  if SelCount <= 1000 then
+    CountText := Format('; %d peaks in selection', [SelCount])
+  else
+    CountText := Format('; >1000 peaks in selection (%d, not listed)', [SelCount]);
 
   UpdateStatus(Format(
-    'EODPK samples %d .. %d  (%d samples, %.6f s .. %.6f s)',
+    'EODPK samples %d .. %d  (%d samples, %.6f s .. %.6f s)%s',
     [StartFrame, EndFrame, Length(Data),
-     StartFrame / FSession.SampleRate, EndFrame / FSession.SampleRate]));
+     StartFrame / FSession.SampleRate, EndFrame / FSession.SampleRate,
+     CountText]));
 
   UpdatePlotMode;
 end;
@@ -716,6 +649,7 @@ var
   PeakPositions: TArray<Int64>;
   I, N: Integer;
   Peak: TPeak;
+  CountText: string;
 begin
   if FSession.Mode <> dmWav then
     Exit;
@@ -768,13 +702,18 @@ begin
   FPlot.SetViewRange(StartFrame, EndFrame);
   FPlot.SetHistogramRange(StartFrame, EndFrame);
 
-  edStartSample.Text := StartFrame.ToString;
-  edRange.Text := EndFrame.ToString;
+  SetRangeEdits(StartFrame, EndFrame);
+
+  if N <= 1000 then
+    CountText := Format('; %d peaks in selection', [N])
+  else
+    CountText := Format('; >1000 peaks in selection (%d, not listed)', [N]);
 
   UpdateStatus(Format(
-    'Samples %d .. %d  (%d samples, %.6f s .. %.6f s)',
+    'Samples %d .. %d  (%d samples, %.6f s .. %.6f s)%s',
     [StartFrame, EndFrame, Length(Data),
-     StartFrame / FSession.SampleRate, EndFrame / FSession.SampleRate]));
+     StartFrame / FSession.SampleRate, EndFrame / FSession.SampleRate,
+     CountText]));
 
   UpdatePlotMode;
 end;
@@ -788,7 +727,7 @@ begin
   FPlot.SetMode(TPlotMode(FModeBox.ItemIndex));
 
   StartFrame := ReadInt64Edit(edStartSample, 0);
-  EndFrame := ReadInt64Edit(edRange, StartFrame);
+  EndFrame := ReadInt64Edit(edEndSample, StartFrame);
   if EndFrame < StartFrame then
     EndFrame := StartFrame;
   FPlot.SetViewRange(StartFrame, EndFrame);
@@ -825,7 +764,7 @@ begin
   else if FSession.Mode = dmPeakFile then
     ShowPeakFileRange(
       ReadInt64Edit(edStartSample, 0),
-      ReadInt64Edit(edRange, ReadInt64Edit(edStartSample, 0)));
+      ReadInt64Edit(edEndSample, ReadInt64Edit(edStartSample, 0)));
 end;
 
 procedure TMainForm.FAnalyzeButtonClick(Sender: TObject);
@@ -874,13 +813,13 @@ begin
   begin
     ShowPeakFileRange(
       ReadInt64Edit(edStartSample, 0),
-      ReadInt64Edit(edRange, ReadInt64Edit(edStartSample, 0)));
+      ReadInt64Edit(edEndSample, ReadInt64Edit(edStartSample, 0)));
     Exit;
   end;
 
   ShowRawPosition(
     ReadInt64Edit(edStartSample, 0),
-    ReadInt64Edit(edRange, ReadInt64Edit(edStartSample, 0)));
+    ReadInt64Edit(edEndSample, ReadInt64Edit(edStartSample, 0)));
 end;
 
 procedure TMainForm.FModeBoxChange(Sender: TObject);
@@ -933,16 +872,13 @@ begin
       EndFrame := FSession.GetPeakPosition(0) + 200;
       if EndFrame >= FSession.TotalFrames then
         EndFrame := FSession.TotalFrames - 1;
-      edStartSample.Text := StartFrame.ToString;
-      edRange.Text := EndFrame.ToString;
+      SetRangeEdits(StartFrame, EndFrame);
       ShowPeakFileRange(StartFrame, EndFrame);
 
     end
     else
     begin
-      edStartSample.Text := '0';
-      edRange.Text := '200';
-
+      SetRangeEdits(0, 200);
     end;
 
 //    UpdateStatus(Format(
@@ -1074,9 +1010,18 @@ begin
 end;
 procedure TMainForm.FPeakListMouseDown(Sender: TObject; Button: TMouseButton;
     Shift: TShiftState; X, Y: Single);
+var
+  S: string;
 begin
-  if (Button=TMouseButton.mbRight) and (FPeakList.Selected<>nil) then
-    edRange.Text:= FPeakList.Selected.Text;
+  if (Button <> TMouseButton.mbRight) or (FPeakList.Selected = nil) then
+    Exit;
+
+  S := FPeakList.Selected.Text;
+  if S.StartsWith('<<') or S.StartsWith('>>') then
+    Exit;
+
+  { edEndSample.OnChange (edEndSampleChange) recomputes edRange automatically. }
+  edEndSample.Text := S;
 end;
 
 procedure TMainForm.FPositionBarChange(Sender: TObject);
@@ -1102,13 +1047,7 @@ begin
   if ViewW <= 0 then
     ViewW := 200;
 
-  FUpdating := True;
-  try
-    edStartSample.Text := Frame.ToString;
-    edRange.Text := (Frame + ViewW).ToString;
-  finally
-    FUpdating := False;
-  end;
+  SetRangeEdits(Frame, Frame + ViewW - 1);
 
   if FSession.Mode = dmWav then
     ShowRawPosition(Frame, Frame + ViewW - 1)
@@ -1369,71 +1308,7 @@ begin
     ViewStart,
     ViewEnd);
 end;
-//procedure TMainForm.OverviewClick(
-//  Sender: TObject;
-//  Frame: Int64);
-//var
-//  ViewWidth: Int64;
-//  NewStart: Int64;
-//  NewEnd: Int64;
-//begin
-//  if FSession.Mode = dmNone then
-//    Exit;
-//
-//  if FSession.TotalFrames <= 0 then
-//    Exit;
-//
-//  { Сохраняем текущий zoom }
-//  ViewWidth := FPlot.ViewSampleCount;
-//
-//  if ViewWidth <= 0 then
-//    ViewWidth := FCurrentCount;
-//
-//  if ViewWidth <= 0 then
-//    ViewWidth := 201;
-//
-//  { Клик считается центром нового окна }
-//  NewStart :=
-//    Frame - ViewWidth div 2;
-//
-//  NewEnd :=
-//    NewStart + ViewWidth;
-//
-//  { Ограничиваем окно границами файла }
-//  if NewStart < 0 then
-//  begin
-//    NewStart := 0;
-//    NewEnd := NewStart + ViewWidth;
-//  end;
-//
-//  if NewEnd >= FSession.TotalFrames then
-//  begin
-//    NewEnd := FSession.TotalFrames - 1;
-//    NewStart := NewEnd - ViewWidth;
-//  end;
-//
-//  if NewStart < 0 then
-//    NewStart := 0;
-//
-//  FUpdating := True;
-//  try
-//    edStartSample.Text := NewStart.ToString;
-//    edRange.Text := NewEnd.ToString;
-//  finally
-//    FUpdating := False;
-//  end;
-//
-//  if FSession.Mode = dmWav then
-//    ShowRawPosition(
-//      NewStart,
-//      NewEnd)
-//  else if FSession.Mode = dmPeakFile then
-//    ShowPeakFileRange(
-//      NewStart,
-//      NewEnd);
-//
-//  FillPeakListAroundFrame(Frame);
-//end;
+
 procedure TMainForm.OverviewClick(Sender: TObject; Frame: Int64);
 var
   ViewWidth: Int64;
@@ -1453,103 +1328,73 @@ begin
   if NewEnd >= FSession.TotalFrames then begin NewEnd := FSession.TotalFrames - 1; NewStart := NewEnd - ViewWidth; end;
   if NewStart < 0 then NewStart := 0;
 
-  FUpdating := True;
-  try
-    edStartSample.Text := NewStart.ToString;
-    edRange.Text := NewEnd.ToString;
-  finally
-    FUpdating := False;
-  end;
+  SetRangeEdits(NewStart, NewEnd);
 
   if FSession.Mode = dmWav then
     ShowRawPosition(NewStart, NewEnd)
   else if FSession.Mode = dmPeakFile then
     ShowPeakFileRange(NewStart, NewEnd);
 
-  { <<< FIX: заставляем красный прямоугольник перерисоваться >>> }
+  { <<< FIX: восстановление рабочего диапазона отображения >>> }
   FPlot.GetViewRange(NewStart, NewEnd);
   UpdateOverviewView(NewStart, NewEnd);
 end;
-//procedure TMainForm.FillPeakListAroundFrame(
-//  AFrame: Int64);
-//var
-//  Positions: TArray<Int64>;
-//  L, R: Integer;
-//  Mid: Integer;
-//  I: Integer;
-//  P: TPeak;
-//begin
-//  if FSession.PeakCount <= 0 then
-//  begin
-//    FPeakList.Clear;
-//    FPeakListFirstIndex := 0;
-//    Exit;
-//  end;
-//
-//  Positions := FSession.PeakPositions;
-//
-//  if Length(Positions) = 0 then
-//    Exit;
-//
-//  { --------------------------------------------------------------- }
-//  { Binary search: первый peak >= AFrame                             }
-//  { --------------------------------------------------------------- }
-//
-//  L := 0;
-//  R := Length(Positions) - 1;
-//
-//  while L < R do
-//  begin
-//    Mid := L + (R - L) div 2;
-//
-//    if Positions[Mid] < AFrame then
-//      L := Mid + 1
-//    else
-//      R := Mid;
-//  end;
-//
-//  { Ближайший peak }
-//  if L > 0 then
-//  begin
-//    if Abs(Positions[L - 1] - AFrame) <
-//       Abs(Positions[L] - AFrame) then
-//      L := L - 1;
-//  end;
-//
-//  Mid := L;
-//
-//  { ±100 peaks }
-//  L := Max(
-//    0,
-//    Mid - 100);
-//
-//  R := Min(
-//    Length(Positions) - 1,
-//    Mid + 100);
-//
-//  FPeakListFirstIndex := L;
-//
-//  FPeakList.BeginUpdate;
-//  try
-//    FPeakList.Clear;
-//
-//    for I := L to R do
-//      FPeakList.Items.Add(
-//        Positions[I].ToString);
-//
-//    { Выбираем peak, по которому кликнули }
-//    FPeakList.ItemIndex := Mid - L;
-//
-//  finally
-//    FPeakList.EndUpdate;
-//  end;
-//end;
+
+procedure TMainForm.OverviewRangeSelected(Sender: TObject;
+  AStart, AEnd: Int64);
+var
+  ViewStart, ViewEnd: Int64;
+begin
+  if FSession.Mode = dmNone then Exit;
+  if FSession.TotalFrames <= 0 then Exit;
+
+  AStart := EnsureRange(AStart, Int64(0), FSession.TotalFrames - 1);
+  AEnd := EnsureRange(AEnd, AStart, FSession.TotalFrames - 1);
+
+  SetRangeEdits(AStart, AEnd);
+
+  if FSession.Mode = dmWav then
+    ShowRawPosition(AStart, AEnd)
+  else if FSession.Mode = dmPeakFile then
+    ShowPeakFileRange(AStart, AEnd);
+
+  FPlot.GetViewRange(ViewStart, ViewEnd);
+  UpdateOverviewView(ViewStart, ViewEnd);
+end;
+
+procedure TMainForm.PopulatePeakListRange(const Positions: TArray<Int64>;
+  L, R, Total: Integer);
+var
+  I: Integer;
+begin
+  FPeakListFirstIndex := L;
+  FPeakListRealCount := R - L + 1;
+
+  FPeakList.BeginUpdate;
+  try
+    FPeakList.Clear;
+
+    { Ссылка "<<" в начало, если перед окном есть ещё элементы }
+    if L > 0 then
+      FPeakList.Items.Add(Format('<<  (%d more)', [L]));
+
+    for I := L to R do
+      FPeakList.Items.Add(Positions[I].ToString);
+
+    { Ссылка ">>" в конец, если после окна есть ещё элементы }
+    if R < Total - 1 then
+      FPeakList.Items.Add(Format('>>  (%d more)', [Total - 1 - R]));
+  finally
+    FPeakList.EndUpdate;
+  end;
+end;
+
 procedure TMainForm.FillPeakListAroundFrame(AFrame: Int64);
 const
   HalfWindow = 100;
 var
   Positions: TArray<Int64>;
-  Total, Mid, L, R, I: Integer;
+  Total, Mid, L, R: Integer;
   ListIndex: Integer;
 begin
   if FSession.PeakCount <= 0 then
@@ -1563,7 +1408,7 @@ begin
   Positions := FSession.PeakPositions;
   Total := Length(Positions);
 
-  { Binary search: ближайший peak к AFrame }
+  { Бинарный поиск: ближайший пик к AFrame }
   L := 0;
   R := Total - 1;
   while L < R do
@@ -1578,46 +1423,32 @@ begin
     Dec(L);
   Mid := L;
 
-  { Если текущий пик уже внутри загруженного окна — только подсвечиваем }
+  { Если пик уже виден в текущем окне листбокса - просто двигаем выделение }
   if (Mid >= FPeakListFirstIndex) and
      (Mid < FPeakListFirstIndex + FPeakListRealCount) and
      (FPeakListRealCount > 0) then
   begin
-    FPeakList.ItemIndex := Mid - FPeakListFirstIndex;
+    ListIndex := Mid - FPeakListFirstIndex;
+    if FPeakListFirstIndex > 0 then
+      Inc(ListIndex);  { компенсация смещения из-за "<<" }
+    FPeakList.ItemIndex := ListIndex;
     Exit;
   end;
 
-  { Иначе перезаполняем окно ±100 с текущим посередине }
+  { Строим новое окно +-100 вокруг найденного пика }
   L := Max(0, Mid - HalfWindow);
   R := Min(Total - 1, Mid + HalfWindow);
 
-  FPeakListFirstIndex := L;
-  FPeakListRealCount := R - L + 1;
+  PopulatePeakListRange(Positions, L, R, Total);
 
-  FPeakList.BeginUpdate;
-  try
-    FPeakList.Clear;
-
-    { Навигационный элемент "<<" в начало, если есть что листать }
+  { Выделяем найденный пик }
+  if (Mid >= L) and (Mid <= R) then
+  begin
+    ListIndex := Mid - L;
     if L > 0 then
-      FPeakList.Items.Add(Format('<<  (%d more)', [L]));
-
-    for I := L to R do
-      FPeakList.Items.Add(Positions[I].ToString);
-
-    { Навигационный элемент ">>" в конец, если есть что листать }
-    if R < Total - 1 then
-      FPeakList.Items.Add(Format('>>  (%d more)', [Total - 1 - R]));
-
-    { Подсвечиваем текущий пик }
-    if (Mid >= L) and (Mid <= R) then
-    begin
-      ListIndex := Mid - L;
-      if L > 0 then Inc(ListIndex);  // сдвиг из-за "<<"
-      FPeakList.ItemIndex := ListIndex;
-    end;
-  finally
-    FPeakList.EndUpdate;
+      Inc(ListIndex);  { компенсация смещения из-за "<<" }
+    FPeakList.ItemIndex := ListIndex;
   end;
 end;
+
 end.
