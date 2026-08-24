@@ -18,14 +18,16 @@ type
     FSource: TFourChannelAudioSource;
     FStore: TEodPeakStore;
     FPeaks: TPeakArray;            // used only for dmWav
-    FPeakPositions: TArray<Int64>; // lazy-loaded cache for dmPeakFile
-    FPeakPositionsLoaded: Boolean;
+//    FPeakPositions: TArray<Int64>; // lazy-loaded cache for dmPeakFile
+//    FPeakPositionsLoaded: Boolean;
     FSampleRate: Integer;
     FTotalFrames: Int64;
     procedure CloseObjects;
-    procedure LoadPeakPositions;
-    function GetPeakPositions: TArray<Int64>;
+//    procedure LoadPeakPositions;
+//    function GetPeakPositions: TArray<Int64>;
     function GetVersion: integer;
+    function GetPeakPositions: TArray<Int64>;
+    procedure LoadPeakPositions;
   public
     destructor Destroy; override;
     procedure Close;
@@ -37,7 +39,7 @@ type
     function ReadPeakInfoPage(PageIndex: Integer; var Peaks: TPeakArray): Boolean;
     function GetPeak(Index: Integer; out Peak: TPeak): Boolean;
     function GetPeakPosition(Index: Integer): Int64;
-    function FindPeakRangeIndices(StartFrame, EndFrame: Int64; WindowMargin: Integer; out FirstIdx, LastIdx: Integer): Boolean;
+//    function FindPeakRangeIndices(StartFrame, EndFrame: Int64; WindowMargin: Integer; out FirstIdx, LastIdx: Integer): Boolean;
     function CalculateStd(const Data: TAudioChunk): TFloatArray;
     function PeakCount: Integer;
     procedure SavePeakFile(const FileName: string);
@@ -47,8 +49,14 @@ type
     property PeakFile: string read FPeakFile;
     property SampleRate: Integer read FSampleRate;
     property TotalFrames: Int64 read FTotalFrames;
-    property PeakPositions: TArray<Int64> read GetPeakPositions;
+//    property PeakPositions: TArray<Int64> read GetPeakPositions;
     property Version: integer read GetVersion;
+    function FindPeakRangeIndices(StartFrame, EndFrame: Int64;  WindowMargin: Int64;  out FirstIdx, LastIdx: Int64): Boolean;
+    function ReadPeakEnvelope(StartFrame, EndFrame: Int64;   MaxPoints: Integer;   var Envelope: TWaveEnvelope): Boolean;
+    function ReadPeakInfoRange(
+  FirstIndex: Int64;
+  Count: Int64;
+  var Peaks: TPeakArray): Boolean;
   end;
 
 implementation
@@ -67,6 +75,82 @@ begin
   inherited;
 end;
 
+function TEodGuiSession.FindPeakRangeIndices(
+  StartFrame, EndFrame: Int64;
+  WindowMargin: Int64;
+  out FirstIdx, LastIdx: Int64): Boolean;
+var
+  L, R, M: Int64;
+  P: TPeak;
+  StartPos: Int64;
+  SearchStart, SearchEnd: Int64;
+begin
+  Result := False;
+  FirstIdx := -1;
+  LastIdx := -1;
+
+  if FStore = nil then
+    Exit;
+
+  if FStore.Header.PeakCount <= 0 then
+    Exit;
+
+  SearchStart := StartFrame - WindowMargin;
+  SearchEnd := EndFrame + WindowMargin;
+
+  if SearchStart < 0 then
+    SearchStart := 0;
+
+  { First peak >= SearchStart }
+  L := 0;
+  R := FStore.Header.PeakCount - 1;
+
+  while L <= R do
+  begin
+    M := L + (R - L) div 2;
+
+    if not FStore.ReadRecordInfo(
+      M, P, StartPos) then
+      Exit;
+
+    if P.Position >= SearchStart then
+    begin
+      FirstIdx := M;
+      R := M - 1;
+    end
+    else
+      L := M + 1;
+  end;
+
+  if FirstIdx < 0 then
+    FirstIdx := FStore.Header.PeakCount;
+
+  { Last peak <= SearchEnd }
+  L := 0;
+  R := FStore.Header.PeakCount - 1;
+
+  while L <= R do
+  begin
+    M := L + (R - L) div 2;
+
+    if not FStore.ReadRecordInfo(
+      M, P, StartPos) then
+      Exit;
+
+    if P.Position <= SearchEnd then
+    begin
+      LastIdx := M;
+      L := M + 1;
+    end
+    else
+      R := M - 1;
+  end;
+
+  Result :=
+    (FirstIdx >= 0) and
+    (FirstIdx <= LastIdx);
+end;
+
 procedure TEodGuiSession.Close;
 begin
   CloseObjects;
@@ -77,8 +161,8 @@ begin
   FSampleRate := 0;
   FTotalFrames := 0;
   SetLength(FPeaks, 0);
-  SetLength(FPeakPositions, 0);
-  FPeakPositionsLoaded := False;
+//  SetLength(FPeakPositions, 0);
+//  FPeakPositionsLoaded := False;
 end;
 
 procedure TEodGuiSession.OpenWavPair(const File1, File2: string);
@@ -103,12 +187,12 @@ begin
   FSampleRate := FStore.Header.SampleRate;
   FTotalFrames := FStore.Header.TotalFrames;
 
-  if (FStore.Header.Version = EODPK_VERSION_1) and
-     (FStore.Header.PeakCount > 0) then
-  begin
-    if FStore.ReadRecordInfo(FStore.Header.PeakCount - 1, P, StartFrame) then
-      FTotalFrames := P.Position + 1;
-  end;
+//  if (FStore.Header.Version = EODPK_VERSION_1) and
+//     (FStore.Header.PeakCount > 0) then
+//  begin
+//    if FStore.ReadRecordInfo(FStore.Header.PeakCount - 1, P, StartFrame) then
+//      FTotalFrames := P.Position + 1;
+//  end;
 
   FMode := dmPeakFile;
 end;
@@ -119,26 +203,26 @@ var
   Peaks: TPeakArray;
   FirstIdx, Count: Int64;
 begin
-  if FPeakPositionsLoaded then
-    Exit;
+//  if FPeakPositionsLoaded then
+//    Exit;
   if FMode <> dmPeakFile then
     Exit;
   if FStore = nil then
     Exit;
 
-  SetLength(FPeakPositions, FStore.Header.PeakCount);
+//  SetLength(FPeakPositions, FStore.Header.PeakCount);
 
-  for PageIndex := 0 to FStore.PageCount - 1 do
-  begin
-    if not FStore.GetPageBounds(PageIndex, FirstIdx, Count) then
-      Continue;
-    if not FStore.ReadRecordInfoPageInternal(FirstIdx, Count, Peaks) then
-      Continue;
-    for I := 0 to High(Peaks) do
-      FPeakPositions[FirstIdx + I] := Peaks[I].Position;
-  end;
-
-  FPeakPositionsLoaded := True;
+//  for PageIndex := 0 to FStore.PageCount - 1 do
+//  begin
+//    if not FStore.GetPageBounds(PageIndex, FirstIdx, Count) then
+//      Continue;
+//    if not FStore.ReadRecordInfoPageInternal(FirstIdx, Count, Peaks) then
+//      Continue;
+//    for I := 0 to High(Peaks) do
+//      FPeakPositions[FirstIdx + I] := Peaks[I].Position;
+//  end;
+//
+//  FPeakPositionsLoaded := True;
 end;
 
 function TEodGuiSession.GetPeakPositions: TArray<Int64>;
@@ -156,7 +240,7 @@ begin
   if FMode = dmPeakFile then
   begin
     LoadPeakPositions;
-    Result := Copy(FPeakPositions);
+//    Result := Copy(FPeakPositions);
     Exit;
   end;
 
@@ -165,7 +249,10 @@ end;
 
 function TEodGuiSession.GetVersion: integer;
 begin
-    result:= FStore.Header.Version
+  if FStore <> nil then
+    Result := FStore.Header.Version
+  else
+    Result := 0;
 end;
 
 procedure TEodGuiSession.SetPeaks(const APeaks: TPeakArray);
@@ -231,6 +318,58 @@ begin
   Result := FStore.ReadRecordInfoPageInternal(FirstIdx, Count, Peaks);
 end;
 
+function TEodGuiSession.ReadPeakInfoRange(
+  FirstIndex: Int64;
+  Count: Int64;
+  var Peaks: TPeakArray): Boolean;
+var
+  I: Int64;
+  P: TPeak;
+  StartFrame: Int64;
+begin
+  Result := False;
+  SetLength(Peaks, 0);
+
+  if FStore = nil then
+    Exit;
+
+  if FMode <> dmPeakFile then
+    Exit;
+
+  if FirstIndex < 0 then
+    Exit;
+
+  if Count <= 0 then
+    Exit;
+
+  if FirstIndex >= FStore.Header.PeakCount then
+    Exit;
+
+  if Count > FStore.Header.PeakCount - FirstIndex then
+    Count := FStore.Header.PeakCount - FirstIndex;
+
+  if Count > MaxInt then
+    Exit;
+
+  SetLength(Peaks, Integer(Count));
+
+  for I := 0 to Count - 1 do
+  begin
+    if not FStore.ReadRecordInfo(
+      FirstIndex + I,
+      P,
+      StartFrame) then
+    begin
+      SetLength(Peaks, 0);
+      Exit;
+    end;
+
+    Peaks[Integer(I)] := P;
+  end;
+
+  Result := True;
+end;
+
 function TEodGuiSession.GetPeak(Index: Integer; out Peak: TPeak): Boolean;
 var
   StartFrame: Int64;
@@ -253,6 +392,33 @@ begin
   end;
 end;
 
+//function TEodGuiSession.GetPeakPosition(Index: Integer): Int64;
+//var
+//  P: TPeak;
+//  StartFrame: Int64;
+//begin
+//  Result := -1;
+//  if (Index < 0) or (Index >= PeakCount) then
+//    Exit;
+//
+//  if FMode = dmWav then
+//  begin
+//    Result := FPeaks[Index].Position;
+//    Exit;
+//  end;
+//
+//  if FMode = dmPeakFile then
+//  begin
+//    if FStore = nil then Exit;
+////    if FPeakPositionsLoaded and (Index < Length(FPeakPositions)) then
+//    begin
+////      Result := FPeakPositions[Index];
+//      Exit;
+//    end;
+//    if FStore.ReadRecordInfo(Index, P, StartFrame) then
+//      Result := P.Position;
+//  end;
+//end;
 function TEodGuiSession.GetPeakPosition(Index: Integer): Int64;
 var
   P: TPeak;
@@ -270,68 +436,12 @@ begin
 
   if FMode = dmPeakFile then
   begin
-    if FStore = nil then Exit;
-    if FPeakPositionsLoaded and (Index < Length(FPeakPositions)) then
-    begin
-      Result := FPeakPositions[Index];
+    if FStore = nil then
       Exit;
-    end;
+
     if FStore.ReadRecordInfo(Index, P, StartFrame) then
       Result := P.Position;
   end;
-end;
-
-function TEodGuiSession.FindPeakRangeIndices(StartFrame, EndFrame: Int64; WindowMargin: Integer; out FirstIdx, LastIdx: Integer): Boolean;
-var
-  Positions: TArray<Int64>;
-  L, R, M: Integer;
-  SearchStart, SearchEnd: Int64;
-begin
-  Result := False;
-  FirstIdx := -1;
-  LastIdx := -1;
-
-  if PeakCount = 0 then
-    Exit;
-
-  Positions := PeakPositions;
-  if Length(Positions) = 0 then
-    Exit;
-
-  SearchStart := StartFrame - WindowMargin;
-  SearchEnd := EndFrame + WindowMargin;
-
-  L := 0;
-  R := High(Positions);
-  while L <= R do
-  begin
-    M := (L + R) div 2;
-    if Positions[M] >= SearchStart then
-    begin
-      FirstIdx := M;
-      R := M - 1;
-    end
-    else
-      L := M + 1;
-  end;
-  if FirstIdx < 0 then
-    FirstIdx := Length(Positions);
-
-  L := 0;
-  R := High(Positions);
-  while L <= R do
-  begin
-    M := (L + R) div 2;
-    if Positions[M] <= SearchEnd then
-    begin
-      LastIdx := M;
-      L := M + 1;
-    end
-    else
-      R := M - 1;
-  end;
-
-  Result := (FirstIdx <= LastIdx) and (LastIdx >= 0) and (FirstIdx < Length(Positions));
 end;
 
 function TEodGuiSession.CalculateStd(const Data: TAudioChunk): TFloatArray;
@@ -364,18 +474,46 @@ begin
   if FMode = dmPeakFile then
   begin
     TotalFrames := FTotalFrames;
-    if (FStore.Header.Version = EODPK_VERSION_1) and
-       (FStore.Header.PeakCount > 0) then
-    begin
-      if FStore.ReadRecordInfo(FStore.Header.PeakCount - 1, LastPeak, StartFrame) then
-        TotalFrames := Max(TotalFrames, LastPeak.Position + 1);
-    end;
+//    if (FStore.Header.Version = EODPK_VERSION_1) and
+//       (FStore.Header.PeakCount > 0) then
+//    begin
+//      if FStore.ReadRecordInfo(FStore.Header.PeakCount - 1, LastPeak, StartFrame) then
+//        TotalFrames := Max(TotalFrames, LastPeak.Position + 1);
+//    end;
 
     TEodPeakStore.SaveFromStore(FileName, FStore, '', '', TotalFrames);
     Exit;
   end;
 
   raise Exception.Create('No data source is open');
+end;
+
+function TEodGuiSession.ReadPeakEnvelope(
+  StartFrame, EndFrame: Int64;
+  MaxPoints: Integer;
+  var Envelope: TWaveEnvelope): Boolean;
+var
+  FirstIdx, LastIdx: Int64;
+begin
+  Result := False;
+  SetLength(Envelope, 0);
+
+  if FMode <> dmPeakFile then
+    Exit;
+
+  if not FindPeakRangeIndices(
+    StartFrame,
+    EndFrame,
+    0,
+    FirstIdx,
+    LastIdx) then
+    Exit;
+
+  Result := FStore.ReadEnvelope(
+    FirstIdx,
+    LastIdx,
+    MaxPoints,
+    Envelope);
 end;
 
 end.

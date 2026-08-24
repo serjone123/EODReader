@@ -6,6 +6,26 @@ uses
   System.SysUtils;
 
 type
+
+  TWaveEnvelopePoint = packed record
+    StartPosition: Int64;
+    EndPosition: Int64;
+
+    Ch1Min: Single;
+    Ch1Max: Single;
+
+    Ch2Min: Single;
+    Ch2Max: Single;
+
+    Ch3Min: Single;
+    Ch3Max: Single;
+
+    Ch4Min: Single;
+    Ch4Max: Single;
+  end;
+
+  TWaveEnvelope = array of TWaveEnvelopePoint;
+
   TFloatArray = array of Single;
 
   TAudioFrame = packed record
