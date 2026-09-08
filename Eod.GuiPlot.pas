@@ -1,4 +1,4 @@
-unit Eod.GuiPlot;
+﻿unit Eod.GuiPlot;
 
 interface
 
@@ -100,6 +100,7 @@ type
     FFullEnd: Int64;
     FViewStart: Int64;
     FViewEnd: Int64;
+    FMaxView: Int64;
     FDragging: Boolean;
     FDragStartX: Single;
     FDragStartViewStart: Int64;
@@ -165,6 +166,7 @@ type
     procedure SetSelectedPosition(AFrame: Int64);
     procedure SetHistogramRange(StartFrame, EndFrame: Int64);
     procedure SetFullRange(AStart, AEnd: Int64);
+    procedure SetMaxViewSamples(AValue: Int64);
     procedure SetViewRange(AStart, AEnd: Int64);
     procedure GetViewRange(out AStart, AEnd: Int64);
     function ViewSampleCount: Int64;
@@ -203,6 +205,7 @@ begin
   FFullEnd := 0;
   FViewStart := 0;
   FViewEnd := 0;
+  FMaxView := MaxViewSamples;
 //  FLastMouseX := 0;
   FLastMouseX := FPaintBox.Width / 2
 end;
@@ -283,11 +286,22 @@ begin
     FFullEnd := AEnd;
   end;
   FViewStart := FFullStart;
-  if (FFullEnd - FFullStart) > MaxViewSamples then
-    FViewEnd := FFullStart + MaxViewSamples
+  if (FFullEnd - FFullStart) > FMaxView then
+    FViewEnd := FFullStart + FMaxView
   else
     FViewEnd := FFullEnd;
   RequestRepaint;
+end;
+
+procedure TSignalPlot.SetMaxViewSamples(AValue: Int64);
+begin
+  { The maximum view width is mode-dependent. In WAV mode a wide view
+    allocates a matching raw buffer, so it must stay bounded. In EODPK
+    mode the plot only reads the compact envelope, so the whole file
+    can be shown. The caller decides which limit applies. }
+  if AValue < MinViewSamples then
+    AValue := MinViewSamples;
+  FMaxView := AValue;
 end;
 
 procedure TSignalPlot.SetViewRange(AStart, AEnd: Int64);
@@ -339,7 +353,7 @@ end;
 //    FViewEnd := FViewStart + W;
 //  end;
 //
-//  { Limit maximum width � prevents OOM when zooming out }
+//  { Limit maximum width — prevents OOM when zooming out }
 //  if W > MaxViewSamples then
 //  begin
 //    Center := (FViewStart + FViewEnd) div 2;
@@ -396,8 +410,8 @@ begin
   if W < MinViewSamples then
     W := MinViewSamples;
 
-  if W > MaxViewSamples then
-    W := MaxViewSamples;
+  if W > FMaxView then
+    W := FMaxView;
 
   { The complete file is smaller than our minimum zoom level. }
   if W >= FullWidth then
@@ -555,8 +569,8 @@ begin
   if NewWidth < MinViewSamples then
     NewWidth := MinViewSamples;
 
-  if NewWidth > MaxViewSamples then
-    NewWidth := MaxViewSamples;
+  if NewWidth > FMaxView then
+    NewWidth := FMaxView;
 
   if NewWidth >= FullWidthD then
   begin
@@ -1357,7 +1371,24 @@ begin
       TTextAlign.Leading, TTextAlign.Center);
     Exit;
   end;
+{ EODPK envelope is a RAW representation. }
+if FEnvelopeActive and
+   ((FMode = pmRaw) or (FMode = pmRaw4Channels)) then
+begin
+  DrawEnvelope4Channels(Canvas, R);
 
+  { selected position / peak marker if needed }
+
+  Exit;
+end;
+
+{ Normal non-envelope data. }
+case FMode of
+  pmRaw, pmRawAndFir15: N := Length(FData);
+  pmStd: N := Length(FStd);
+  pmFir15: N := Length(FFir);
+  pmRaw4Channels: N := Length(FData);
+end;
   if N = 0 then
     Exit;
 
@@ -1530,6 +1561,11 @@ begin
   FTitle := ATitle;
   UpdatePeakOffset(PeakFrame);
   FSelectedOffset := -1;
+  { Raw channel data replaces any previously shown envelope. Leaving the
+    envelope active would make PaintBox keep drawing the stale envelope
+    (and hide the raw signal) after the user zooms back in. }
+  SetLength(FEnvelope, 0);
+  FEnvelopeActive := False;
   RequestRepaint;
 end;
 
@@ -1632,582 +1668,14 @@ begin
   FPeakOffset := -1;
   FShowPeakLine := False;
 
-  SetFullRange(StartFrame, EndFrame);
+  { IMPORTANT: do NOT touch the full range here.
+    The full range is the whole file and is configured once when the
+    file is opened. Overwriting it with the current view would make the
+    plot believe it is already fully zoomed out and silently block any
+    further zoom-out. Only the current view range is updated. }
+  SetViewRange(StartFrame, EndFrame);
 end;
 
-//procedure TSignalPlot.DrawEnvelope4Channels(
-//  Canvas: TCanvas;
-//  const R: TRectF);
-//const
-//  Gap = 6;
-//var
-//  Ch, I: Integer;
-//  H: Single;
-//  CR: TRectF;
-//  X, Y1, Y2: Single;
-//  MinY, MaxY: Double;
-//  V: Double;
-//  P: TWaveEnvelopePoint;
-//  CenterFrame: Int64;
-//  ViewWidth: Int64;
-//  A: array[0..3] of TAlphaColor;
-//begin
-//  if Length(FEnvelope) = 0 then
-//    Exit;
-//
-//  A[0] := TAlphaColorRec.Red;
-//  A[1] := TAlphaColorRec.Green;
-//  A[2] := TAlphaColorRec.Blue;
-//  A[3] := TAlphaColorRec.Orange;
-//
-//  H := (R.Height - 3 * Gap) / 4.0;
-//
-//  ViewWidth := FViewEnd - FViewStart;
-//  if ViewWidth <= 0 then
-//    ViewWidth := 1;
-//
-//  for Ch := 0 to 3 do
-//  begin
-//    CR := RectF(
-//      R.Left,
-//      R.Top + Ch * (H + Gap),
-//      R.Right,
-//      R.Top + Ch * (H + Gap) + H);
-//
-//    MinY := MaxDouble;
-//    MaxY := -MaxDouble;
-//
-//    for I := 0 to High(FEnvelope) do
-//    begin
-//      P := FEnvelope[I];
-//
-//      case Ch of
-//        0:
-//          begin
-//            MinY := Min(MinY, P.Ch1Min);
-//            MaxY := Max(MaxY, P.Ch1Max);
-//          end;
-//        1:
-//          begin
-//            MinY := Min(MinY, P.Ch2Min);
-//            MaxY := Max(MaxY, P.Ch2Max);
-//          end;
-//        2:
-//          begin
-//            MinY := Min(MinY, P.Ch3Min);
-//            MaxY := Max(MaxY, P.Ch3Max);
-//          end;
-//      else
-//        begin
-//          MinY := Min(MinY, P.Ch4Min);
-//          MaxY := Max(MaxY, P.Ch4Max);
-//        end;
-//      end;
-//    end;
-//
-//    if (MinY = MaxDouble) or
-//       (MaxY = -MaxDouble) then
-//      Continue;
-//
-//    if Abs(MaxY - MinY) < 1E-12 then
-//    begin
-//      MinY := MinY - 1;
-//      MaxY := MaxY + 1;
-//    end;
-//
-//    Canvas.Stroke.Color := A[Ch];
-//    Canvas.Stroke.Thickness := 1;
-//
-//    for I := 0 to High(FEnvelope) do
-//    begin
-//      P := FEnvelope[I];
-//
-////      CenterFrame :=
-////        P.StartPosition +
-////        (P.EndPosition - P.StartPosition) div 2;
-////
-////      X :=
-////        CR.Left +
-////        ((CenterFrame - FViewStart) / ViewWidth) *
-////        CR.Width;
-////
-////      if X < CR.Left then
-////        Continue;
-////
-////      if X > CR.Right then
-////        Continue;
-//{ Envelope point is visible when its interval intersects
-//  the current view. Do not test only its center: after strong
-//  zoom-in the viewport can lie inside the envelope interval. }
-//      if (P.EndPosition < FViewStart) or
-//         (P.StartPosition > FViewEnd) then
-//        Continue;
-//
-//      CenterFrame :=
-//        P.StartPosition +
-//        (P.EndPosition - P.StartPosition) div 2;
-//
-//      { Clamp the displayed X to the visible viewport. }
-//      if CenterFrame < FViewStart then
-//        CenterFrame := FViewStart
-//      else if CenterFrame > FViewEnd then
-//        CenterFrame := FViewEnd;
-//
-//      X :=
-//        CR.Left +
-//        ((CenterFrame - FViewStart) / ViewWidth) *
-//        CR.Width;
-//
-//      case Ch of
-//        0:
-//          begin
-//            Y1 := MapY(P.Ch1Min, MinY, MaxY, CR);
-//            Y2 := MapY(P.Ch1Max, MinY, MaxY, CR);
-//          end;
-//        1:
-//          begin
-//            Y1 := MapY(P.Ch2Min, MinY, MaxY, CR);
-//            Y2 := MapY(P.Ch2Max, MinY, MaxY, CR);
-//          end;
-//        2:
-//          begin
-//            Y1 := MapY(P.Ch3Min, MinY, MaxY, CR);
-//            Y2 := MapY(P.Ch3Max, MinY, MaxY, CR);
-//          end;
-//      else
-//        begin
-//          Y1 := MapY(P.Ch4Min, MinY, MaxY, CR);
-//          Y2 := MapY(P.Ch4Max, MinY, MaxY, CR);
-//        end;
-//      end;
-//
-//      Canvas.DrawLine(
-//        PointF(X, Y1),
-//        PointF(X, Y2),
-//        1);
-//    end;
-//
-//    Canvas.Fill.Color := A[Ch];
-//    Canvas.Font.Size := 11;
-//
-//    Canvas.FillText(
-//      RectF(
-//        CR.Left + 3,
-//        CR.Top + 2,
-//        CR.Left + 95,
-//        CR.Top + 18),
-//      Format('Channel %d', [Ch + 1]),
-//      False,
-//      1,
-//      [],
-//      TTextAlign.Leading,
-//      TTextAlign.Center);
-//  end;
-//end;
-//procedure TSignalPlot.DrawEnvelope4Channels(
-//  Canvas: TCanvas;
-//  const R: TRectF);
-//const
-//  Gap = 6;
-//  DirectPointsPerPixel = 2.0;
-//var
-//  Ch, I, B: Integer;
-//  H: Single;
-//  CR: TRectF;
-//
-//  MinY, MaxY: Double;
-//  VMin, VMax: Double;
-//
-//  X, Y1, Y2: Single;
-//
-//  P: TWaveEnvelopePoint;
-//
-//  ViewWidth: Int64;
-//  FirstIndex, LastIndex: Integer;
-//  VisibleCount: Integer;
-//
-//  Columns: Integer;
-//  B0, B1: Integer;
-//
-//  CenterFrame: Int64;
-//  FramePos: Double;
-//
-//  A: array[0..3] of TAlphaColor;
-//
-//  { Values for current channel }
-//  CurMin, CurMax: Double;
-//
-//  { Used to determine visible Y range }
-//  GlobalMin, GlobalMax: Double;
-//
-//  UseDirectMode: Boolean;
-//begin
-//  if Length(FEnvelope) = 0 then
-//    Exit;
-//
-//  if (FViewEnd <= FViewStart) then
-//    Exit;
-//
-//  A[0] := TAlphaColorRec.Red;
-//  A[1] := TAlphaColorRec.Green;
-//  A[2] := TAlphaColorRec.Blue;
-//  A[3] := TAlphaColorRec.Orange;
-//
-//  H := (R.Height - 3 * Gap) / 4.0;
-//
-//  if H <= 1 then
-//    Exit;
-//
-//  ViewWidth := FViewEnd - FViewStart;
-//
-//  if ViewWidth <= 0 then
-//    Exit;
-//
-//  { --------------------------------------------------------------- }
-//  { Find the first/last envelope point that can be visible.         }
-//  {                                                                 }
-//  { We intentionally do not scan the whole envelope just to find    }
-//  { these points. The envelope is expected to be ordered by frame.  }
-//  { --------------------------------------------------------------- }
-//
-//  FirstIndex := 0;
-//  LastIndex := High(FEnvelope);
-//
-//  while (FirstIndex <= LastIndex) and
-//        (FEnvelope[FirstIndex].EndPosition < FViewStart) do
-//    Inc(FirstIndex);
-//
-//  while (LastIndex >= FirstIndex) and
-//        (FEnvelope[LastIndex].StartPosition > FViewEnd) do
-//    Dec(LastIndex);
-//
-//  if FirstIndex > LastIndex then
-//    Exit;
-//
-//  VisibleCount := LastIndex - FirstIndex + 1;
-//
-//  { --------------------------------------------------------------- }
-//  { Decide whether we can draw points directly.                     }
-//  {                                                                 }
-//  { For example, a 1000 px wide graph with <= 2000 visible points  }
-//  { can still be drawn directly. Above that, aggregate by pixels.   }
-//  { --------------------------------------------------------------- }
-//
-//  UseDirectMode :=
-//    VisibleCount <= Ceil(R.Width * DirectPointsPerPixel);
-//
-//  { --------------------------------------------------------------- }
-//  { Four independent channel graphs.                                }
-//  { --------------------------------------------------------------- }
-//
-//  for Ch := 0 to 3 do
-//  begin
-//    CR := RectF(
-//      R.Left,
-//      R.Top + Ch * (H + Gap),
-//      R.Right,
-//      R.Top + Ch * (H + Gap) + H);
-//
-//    { ------------------------------------------------------------- }
-//    { Find Y range only among visible envelope points.              }
-//    { ------------------------------------------------------------- }
-//
-//    GlobalMin := MaxDouble;
-//    GlobalMax := -MaxDouble;
-//
-//    for I := FirstIndex to LastIndex do
-//    begin
-//      P := FEnvelope[I];
-//
-//      case Ch of
-//        0:
-//          begin
-//            VMin := P.Ch1Min;
-//            VMax := P.Ch1Max;
-//          end;
-//
-//        1:
-//          begin
-//            VMin := P.Ch2Min;
-//            VMax := P.Ch2Max;
-//          end;
-//
-//        2:
-//          begin
-//            VMin := P.Ch3Min;
-//            VMax := P.Ch3Max;
-//          end;
-//
-//      else
-//        begin
-//          VMin := P.Ch4Min;
-//          VMax := P.Ch4Max;
-//        end;
-//      end;
-//
-//      if VMin < GlobalMin then
-//        GlobalMin := VMin;
-//
-//      if VMax > GlobalMax then
-//        GlobalMax := VMax;
-//    end;
-//
-//    if (GlobalMin = MaxDouble) or
-//       (GlobalMax = -MaxDouble) then
-//      Continue;
-//
-//    MinY := GlobalMin;
-//    MaxY := GlobalMax;
-//
-//    if Abs(MaxY - MinY) < 1E-12 then
-//    begin
-//      MinY := MinY - 1;
-//      MaxY := MaxY + 1;
-//    end
-//    else
-//    begin
-//      { Small margin around the signal. }
-//      VMin := (MaxY - MinY) * 0.03;
-//      MinY := MinY - VMin;
-//      MaxY := MaxY + VMin;
-//    end;
-//
-//    { ------------------------------------------------------------- }
-//    { Grid                                                           }
-//    { ------------------------------------------------------------- }
-//
-//    DrawHorizontalGrid(
-//      Canvas,
-//      CR,
-//      MinY,
-//      MaxY);
-//
-//    { ------------------------------------------------------------- }
-//    { Signal                                                          }
-//    { ------------------------------------------------------------- }
-//
-//    Canvas.Stroke.Color := A[Ch];
-//    Canvas.Stroke.Thickness := 1;
-//
-//    { ============================================================= }
-//    { DIRECT MODE                                                     }
-//    { ============================================================= }
-//
-//    if UseDirectMode then
-//    begin
-//      for I := FirstIndex to LastIndex do
-//      begin
-//        P := FEnvelope[I];
-//
-//        CenterFrame :=
-//          P.StartPosition +
-//          (P.EndPosition - P.StartPosition) div 2;
-//
-//        if CenterFrame < FViewStart then
-//          Continue;
-//
-//        if CenterFrame > FViewEnd then
-//          Continue;
-//
-//        FramePos :=
-//          (CenterFrame - FViewStart) /
-//          ViewWidth;
-//
-//        X :=
-//          CR.Left +
-//          FramePos * CR.Width;
-//
-//        if X < CR.Left then
-//          Continue;
-//
-//        if X > CR.Right then
-//          Continue;
-//
-//        case Ch of
-//          0:
-//            begin
-//              VMin := P.Ch1Min;
-//              VMax := P.Ch1Max;
-//            end;
-//
-//          1:
-//            begin
-//              VMin := P.Ch2Min;
-//              VMax := P.Ch2Max;
-//            end;
-//
-//          2:
-//            begin
-//              VMin := P.Ch3Min;
-//              VMax := P.Ch3Max;
-//            end;
-//
-//        else
-//          begin
-//            VMin := P.Ch4Min;
-//            VMax := P.Ch4Max;
-//          end;
-//        end;
-//
-//        Y1 := MapY(
-//          VMin,
-//          MinY,
-//          MaxY,
-//          CR);
-//
-//        Y2 := MapY(
-//          VMax,
-//          MinY,
-//          MaxY,
-//          CR);
-//
-//        Canvas.DrawLine(
-//          PointF(X, Y1),
-//          PointF(X, Y2),
-//          1);
-//      end;
-//    end
-//
-//    { ============================================================= }
-//    { AGGREGATED MODE                                                 }
-//    { ============================================================= }
-//
-//    else
-//    begin
-//      { Approximately two samples/columns per screen pixel. }
-//      Columns := Max(
-//        1,
-//        Ceil(CR.Width * 2));
-//
-//      for B := 0 to Columns - 1 do
-//      begin
-//        { --------------------------------------------------------- }
-//        { Determine frame interval represented by this column.     }
-//        { --------------------------------------------------------- }
-//
-//        B0 :=
-//          FirstIndex +
-//          Floor(
-//            B *
-//            VisibleCount /
-//            Columns);
-//
-//        B1 :=
-//          FirstIndex +
-//          Floor(
-//            (B + 1) *
-//            VisibleCount /
-//            Columns) - 1;
-//
-//        if B0 < FirstIndex then
-//          B0 := FirstIndex;
-//
-//        if B1 > LastIndex then
-//          B1 := LastIndex;
-//
-//        if B1 < B0 then
-//          Continue;
-//
-//        { --------------------------------------------------------- }
-//        { Aggregate min/max for this channel and this column.       }
-//        { --------------------------------------------------------- }
-//
-//        CurMin := MaxDouble;
-//        CurMax := -MaxDouble;
-//
-//        for I := B0 to B1 do
-//        begin
-//          P := FEnvelope[I];
-//
-//          case Ch of
-//            0:
-//              begin
-//                VMin := P.Ch1Min;
-//                VMax := P.Ch1Max;
-//              end;
-//
-//            1:
-//              begin
-//                VMin := P.Ch2Min;
-//                VMax := P.Ch2Max;
-//              end;
-//
-//            2:
-//              begin
-//                VMin := P.Ch3Min;
-//                VMax := P.Ch3Max;
-//              end;
-//
-//          else
-//            begin
-//              VMin := P.Ch4Min;
-//              VMax := P.Ch4Max;
-//            end;
-//          end;
-//
-//          if VMin < CurMin then
-//            CurMin := VMin;
-//
-//          if VMax > CurMax then
-//            CurMax := VMax;
-//        end;
-//
-//        if (CurMin = MaxDouble) or
-//           (CurMax = -MaxDouble) then
-//          Continue;
-//
-//        { --------------------------------------------------------- }
-//        { Draw one vertical envelope line for this screen column.   }
-//        { --------------------------------------------------------- }
-//
-//        X :=
-//          CR.Left +
-//          (B + 0.5) *
-//          CR.Width /
-//          Columns;
-//
-//        Y1 := MapY(
-//          CurMin,
-//          MinY,
-//          MaxY,
-//          CR);
-//
-//        Y2 := MapY(
-//          CurMax,
-//          MinY,
-//          MaxY,
-//          CR);
-//
-//        Canvas.DrawLine(
-//          PointF(X, Y1),
-//          PointF(X, Y2),
-//          1);
-//      end;
-//    end;
-//
-//    { ------------------------------------------------------------- }
-//    { Channel title                                                  }
-//    { ------------------------------------------------------------- }
-//
-//    Canvas.Fill.Color := A[Ch];
-//    Canvas.Font.Size := 11;
-//
-//    Canvas.FillText(
-//      RectF(
-//        CR.Left + 3,
-//        CR.Top + 2,
-//        CR.Left + 95,
-//        CR.Top + 18),
-//      Format(
-//        'Channel %d',
-//        [Ch + 1]),
-//      False,
-//      1,
-//      [],
-//      TTextAlign.Leading,
-//      TTextAlign.Center);
-//  end;
-//end;
 procedure TSignalPlot.DrawEnvelope4Channels(
   Canvas: TCanvas;
   const R: TRectF);
@@ -2228,6 +1696,7 @@ var
 
   I, B: Integer;
   B0, B1: Integer;
+  VisibleCount: Integer;
 
   P: TWaveEnvelopePoint;
 
@@ -2380,7 +1849,11 @@ begin
     { Small view: draw every envelope point.                        }
     { ------------------------------------------------------------- }
 
-    if ViewWidth <= EnvelopeResolutionLimit then
+    { Choose the drawing strategy by how many envelope points fall in
+      the view versus the number of screen columns. This is independent
+      of the absolute zoom level and prevents a single wide bucket from
+      being stretched across many columns (which looked like squares). }
+    if (LastVisible - FirstVisible + 1) <= PlotWidth then
     begin
       for I := FirstVisible to LastVisible do
       begin
@@ -2479,62 +1952,58 @@ begin
 //          1);
 //      end;
 //    end;
-{ Large view: reduced resolution. }
-else
-begin
-  { One min/max pair per screen column. }
-  for B := 0 to PlotWidth - 1 do
-  begin
-    ColumnMin := MaxDouble;
-    ColumnMax := -MaxDouble;
-
-    EnvStart :=
-      FViewStart +
-      (Int64(B) * ViewWidth) div PlotWidth;
-
-    EnvEnd :=
-      FViewStart +
-      (Int64(B + 1) * ViewWidth) div PlotWidth - 1;
-
-    if EnvEnd < EnvStart then
-      EnvEnd := EnvStart;
-
-    for I := FirstVisible to LastVisible do
+    { More envelope points than screen columns: aggregate by point
+      INDEX, not by frame range. Bucketing by index guarantees that a
+      single (possibly wide) envelope bucket contributes to exactly one
+      screen column, so the plot can no longer degrade into solid
+      rectangular blocks. }
+    else
     begin
-      P := FEnvelope[I];
+      VisibleCount := LastVisible - FirstVisible + 1;
 
-      if P.EndPosition < EnvStart then
-        Continue;
+      for B := 0 to PlotWidth - 1 do
+      begin
+        B0 := FirstVisible + (Int64(B) * VisibleCount) div PlotWidth;
+        B1 := FirstVisible + (Int64(B + 1) * VisibleCount) div PlotWidth - 1;
 
-      if P.StartPosition > EnvEnd then
-        Break;
+        if B0 < FirstVisible then
+          B0 := FirstVisible;
+        if B1 > LastVisible then
+          B1 := LastVisible;
+        if B1 < B0 then
+          Continue;
 
-      VMin := PointMin(P);
-      VMax := PointMax(P);
+        ColumnMin := MaxDouble;
+        ColumnMax := -MaxDouble;
 
-      if VMin < ColumnMin then
-        ColumnMin := VMin;
+        for I := B0 to B1 do
+        begin
+          P := FEnvelope[I];
 
-      if VMax > ColumnMax then
-        ColumnMax := VMax;
+          VMin := PointMin(P);
+          VMax := PointMax(P);
+
+          if VMin < ColumnMin then
+            ColumnMin := VMin;
+
+          if VMax > ColumnMax then
+            ColumnMax := VMax;
+        end;
+
+        if ColumnMin = MaxDouble then
+          Continue;
+
+        X := CR.Left + (B + 0.5) * CR.Width / PlotWidth;
+
+        Y1 := MapY(ColumnMin, MinY, MaxY, CR);
+        Y2 := MapY(ColumnMax, MinY, MaxY, CR);
+
+        Canvas.DrawLine(
+          PointF(X, Y1),
+          PointF(X, Y2),
+          1);
+      end;
     end;
-
-    if ColumnMin = MaxDouble then
-      Continue;
-
-    X :=
-      CR.Left +
-      (B + 0.5) * CR.Width / PlotWidth;
-
-    Y1 := MapY(ColumnMin, MinY, MaxY, CR);
-    Y2 := MapY(ColumnMax, MinY, MaxY, CR);
-
-    Canvas.DrawLine(
-      PointF(X, Y1),
-      PointF(X, Y2),
-      1);
-  end;
-end;
     { Channel label }
     Canvas.Fill.Color := A[Ch];
     Canvas.Font.Size := 11;

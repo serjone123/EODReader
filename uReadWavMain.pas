@@ -308,7 +308,12 @@ begin
   OldSession := FSession;
   FSession := Session;
   if FSession.TotalFrames > 0 then
+  begin
+    { WAV mode allocates a raw buffer matching the view, so the maximum
+      view width must stay bounded to avoid huge allocations on zoom-out. }
+    FPlot.SetMaxViewSamples(MaxViewSamples);
     FPlot.SetFullRange(0, FSession.TotalFrames - 1);
+  end;
 
   BuildOverview;
   OldSession.Free;
@@ -505,7 +510,7 @@ end;
 procedure TMainForm.edStartSampleMouseWheel(Sender: TObject; Shift: TShiftState;
   WheelDelta: Integer; var Handled: Boolean);
 const
-  WHEEL_THRESHOLD = 120; // один "щелчок" колеса = 120
+  WHEEL_THRESHOLD = 120; // РѕРґРёРЅ "С‰РµР»С‡РѕРє" РєРѕР»РµСЃР° = 120
 begin
   Inc(FWheelAccumulator, WheelDelta);
 
@@ -537,7 +542,7 @@ begin
   if (Index < 0) or (Index >= FSession.PeakCount) then
     Exit;
 
-  { Убран ручной ItemIndex — теперь делает FillPeakListAroundFrame }
+  { РЈР±СЂР°РЅ СЂСѓС‡РЅРѕР№ ItemIndex вЂ” С‚РµРїРµСЂСЊ РґРµР»Р°РµС‚ FillPeakListAroundFrame }
 
   if FSession.Mode = dmPeakFile then
     Data := FSession.ReadPeak(Index, Peak, StartFrame)
@@ -580,7 +585,7 @@ begin
     [Index + 1, FSession.PeakCount, Peak.Position,
     Peak.Position / FSession.SampleRate, Peak.Prominence]));
 
-  { Перезаполняем ListBox только если нужно, иначе просто подсвечиваем }
+  { РџРµСЂРµР·Р°РїРѕР»РЅСЏРµРј ListBox С‚РѕР»СЊРєРѕ РµСЃР»Рё РЅСѓР¶РЅРѕ, РёРЅР°С‡Рµ РїСЂРѕСЃС‚Рѕ РїРѕРґСЃРІРµС‡РёРІР°РµРј }
   FillPeakListAroundFrame(Peak.Position);
 end;
 
@@ -919,7 +924,13 @@ begin
     FSession.OpenPeakFile(D.FileName);
 
     if FSession.TotalFrames > 0 then
+    begin
+      { EODPK draws only from the compact envelope (never a full raw
+        buffer), so the whole file may be displayed at once. Allow the
+        view to be zoomed all the way out to the entire file. }
+      FPlot.SetMaxViewSamples(FSession.TotalFrames);
       FPlot.SetFullRange(0, FSession.TotalFrames - 1);
+    end;
 
     BuildOverview;
 
@@ -1040,10 +1051,10 @@ begin
 
   S := FPeakList.Items[FPeakList.ItemIndex];
 
-  { Обработка навигационных элементов }
+  { РћР±СЂР°Р±РѕС‚РєР° РЅР°РІРёРіР°С†РёРѕРЅРЅС‹С… СЌР»РµРјРµРЅС‚РѕРІ }
   if S.StartsWith('<<') then
   begin
-    { Листаем назад: предыдущее окно, крайний правый реальный элемент }
+    { Р›РёСЃС‚Р°РµРј РЅР°Р·Р°Рґ: РїСЂРµРґС‹РґСѓС‰РµРµ РѕРєРЅРѕ, РєСЂР°Р№РЅРёР№ РїСЂР°РІС‹Р№ СЂРµР°Р»СЊРЅС‹Р№ СЌР»РµРјРµРЅС‚ }
     PeakIndex := Max(0, FPeakListFirstIndex - 1);
     ShowPeak(PeakIndex);
     Exit;
@@ -1051,17 +1062,17 @@ begin
 
   if S.StartsWith('>>') then
   begin
-    { Листаем вперёд: следующее окно, крайний левый реальный элемент }
+    { Р›РёСЃС‚Р°РµРј РІРїРµСЂС‘Рґ: СЃР»РµРґСѓСЋС‰РµРµ РѕРєРЅРѕ, РєСЂР°Р№РЅРёР№ Р»РµРІС‹Р№ СЂРµР°Р»СЊРЅС‹Р№ СЌР»РµРјРµРЅС‚ }
     PeakIndex := Min(FSession.PeakCount - 1, FPeakListFirstIndex +
       FPeakListRealCount);
     ShowPeak(PeakIndex);
     Exit;
   end;
 
-  { Обычный пик }
+  { РћР±С‹С‡РЅС‹Р№ РїРёРє }
   PeakIndex := FPeakListFirstIndex + FPeakList.ItemIndex;
   if FPeakListFirstIndex > 0 then
-    Dec(PeakIndex); // компенсация элемента "<<"
+    Dec(PeakIndex); // РєРѕРјРїРµРЅСЃР°С†РёСЏ СЌР»РµРјРµРЅС‚Р° "<<"
 
   if (PeakIndex >= 0) and (PeakIndex < FSession.PeakCount) then
   begin
@@ -1307,7 +1318,7 @@ begin
 
   else if FSession.Mode = dmPeakFile then
   begin
-    { Для EODPK используем peak records как источник сигнала. }
+    { Р”Р»СЏ EODPK РёСЃРїРѕР»СЊР·СѓРµРј peak records РєР°Рє РёСЃС‚РѕС‡РЅРёРє СЃРёРіРЅР°Р»Р°. }
 
     for I := 0 to FSession.PeakCount - 1 do
     begin
@@ -1384,7 +1395,7 @@ begin
   else if FSession.Mode = dmPeakFile then
     ShowPeakFileRange(NewStart, NewEnd);
 
-  { <<< FIX: восстановление рабочего диапазона отображения >>> }
+  { <<< FIX: РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёРµ СЂР°Р±РѕС‡РµРіРѕ РґРёР°РїР°Р·РѕРЅР° РѕС‚РѕР±СЂР°Р¶РµРЅРёСЏ >>> }
   FPlot.GetViewRange(NewStart, NewEnd);
   UpdateOverviewView(NewStart, NewEnd);
 end;
@@ -1436,14 +1447,14 @@ begin
   try
     FPeakList.Clear;
 
-    { Ссылка "<<" в начало, если перед окном есть ещё элементы }
+    { РЎСЃС‹Р»РєР° "<<" РІ РЅР°С‡Р°Р»Рѕ, РµСЃР»Рё РїРµСЂРµРґ РѕРєРЅРѕРј РµСЃС‚СЊ РµС‰С‘ СЌР»РµРјРµРЅС‚С‹ }
     if FirstIndex > 0 then
       FPeakList.Items.Add(Format('<<  (%d more)', [FirstIndex]));
 
     for I := 0 to High(Peaks) do
       FPeakList.Items.Add(Peaks[I].Position.ToString);
 
-    { Ссылка ">>" в конец, если после окна есть ещё элементы }
+    { РЎСЃС‹Р»РєР° ">>" РІ РєРѕРЅРµС†, РµСЃР»Рё РїРѕСЃР»Рµ РѕРєРЅР° РµСЃС‚СЊ РµС‰С‘ СЌР»РµРјРµРЅС‚С‹ }
     if LastIndex < Total - 1 then
       FPeakList.Items.Add(Format('>>  (%d more)', [Total - 1 - LastIndex]));
   finally
@@ -1481,10 +1492,10 @@ end;
 //  Total := FSession.PeakCount;
 //
 //  { ------------------------------------------------------------
-//    Бинарный поиск непосредственно по EODPK.
+//    Р‘РёРЅР°СЂРЅС‹Р№ РїРѕРёСЃРє РЅРµРїРѕСЃСЂРµРґСЃС‚РІРµРЅРЅРѕ РїРѕ EODPK.
 //
-//    В памяти НЕ существует массива всех PeakPositions.
-//    ReadRecordInfo читает только фиксированный заголовок одного peak.
+//    Р’ РїР°РјСЏС‚Рё РќР• СЃСѓС‰РµСЃС‚РІСѓРµС‚ РјР°СЃСЃРёРІР° РІСЃРµС… PeakPositions.
+//    ReadRecordInfo С‡РёС‚Р°РµС‚ С‚РѕР»СЊРєРѕ С„РёРєСЃРёСЂРѕРІР°РЅРЅС‹Р№ Р·Р°РіРѕР»РѕРІРѕРє РѕРґРЅРѕРіРѕ peak.
 //    ------------------------------------------------------------ }
 //
 //  L := 0;
@@ -1503,7 +1514,7 @@ end;
 //      R := Mid;
 //  end;
 //
-//  { L = первый peak с Position >= AFrame. }
+//  { L = РїРµСЂРІС‹Р№ peak СЃ Position >= AFrame. }
 //
 //  BestIndex := L;
 //
@@ -1522,8 +1533,8 @@ end;
 //  end;
 //
 //  { ------------------------------------------------------------
-//    Если найденный peak уже находится в отображаемом окне —
-//    просто перемещаем выделение.
+//    Р•СЃР»Рё РЅР°Р№РґРµРЅРЅС‹Р№ peak СѓР¶Рµ РЅР°С…РѕРґРёС‚СЃСЏ РІ РѕС‚РѕР±СЂР°Р¶Р°РµРјРѕРј РѕРєРЅРµ вЂ”
+//    РїСЂРѕСЃС‚Рѕ РїРµСЂРµРјРµС‰Р°РµРј РІС‹РґРµР»РµРЅРёРµ.
 //    ------------------------------------------------------------ }
 //
 //  if (BestIndex >= FPeakListFirstIndex) and
@@ -1541,7 +1552,7 @@ end;
 //  end;
 //
 //  { ------------------------------------------------------------
-//    Загружаем только окно +-100 peaks.
+//    Р—Р°РіСЂСѓР¶Р°РµРј С‚РѕР»СЊРєРѕ РѕРєРЅРѕ +-100 peaks.
 //    ------------------------------------------------------------ }
 //
 //  WindowFirst := Max(Int64(0), BestIndex - HalfWindow);
@@ -1558,7 +1569,7 @@ end;
 //  PopulatePeakListRange(Peaks, 0, Length(Peaks) - 1, Total);
 //
 //  { ------------------------------------------------------------
-//    Выделяем найденный peak.
+//    Р’С‹РґРµР»СЏРµРј РЅР°Р№РґРµРЅРЅС‹Р№ peak.
 //    ------------------------------------------------------------ }
 //
 //  if (BestIndex >= WindowFirst) and (BestIndex < WindowFirst + Length(Peaks))
@@ -1601,8 +1612,8 @@ begin
   end;
 
   { ------------------------------------------------------------
-    Ищем первый peak с Position >= AFrame.
-    Работаем только через TEodGuiSession.
+    РС‰РµРј РїРµСЂРІС‹Р№ peak СЃ Position >= AFrame.
+    Р Р°Р±РѕС‚Р°РµРј С‚РѕР»СЊРєРѕ С‡РµСЂРµР· TEodGuiSession.
     ------------------------------------------------------------ }
 
   L := 0;
@@ -1625,7 +1636,7 @@ begin
 
   BestIndex := L;
 
-  { Проверяем ближайший peak слева. }
+  { РџСЂРѕРІРµСЂСЏРµРј Р±Р»РёР¶Р°Р№С€РёР№ peak СЃР»РµРІР°. }
 
   Pos := FSession.GetPeakPosition(Integer(L));
 
@@ -1651,8 +1662,8 @@ begin
   end;
 
   { ------------------------------------------------------------
-    Если найденный peak уже находится в ListBox —
-    просто выделяем его.
+    Р•СЃР»Рё РЅР°Р№РґРµРЅРЅС‹Р№ peak СѓР¶Рµ РЅР°С…РѕРґРёС‚СЃСЏ РІ ListBox вЂ”
+    РїСЂРѕСЃС‚Рѕ РІС‹РґРµР»СЏРµРј РµРіРѕ.
     ------------------------------------------------------------ }
 
   if (FPeakListRealCount > 0) and
@@ -1672,7 +1683,7 @@ begin
   end;
 
   { ------------------------------------------------------------
-    Загружаем окно вокруг найденного peak.
+    Р—Р°РіСЂСѓР¶Р°РµРј РѕРєРЅРѕ РІРѕРєСЂСѓРі РЅР°Р№РґРµРЅРЅРѕРіРѕ peak.
     ------------------------------------------------------------ }
 
   WindowFirst := Max(Int64(0), BestIndex - HalfWindow);
@@ -1696,7 +1707,7 @@ begin
     Total);
 
   { ------------------------------------------------------------
-    Выделяем найденный peak.
+    Р’С‹РґРµР»СЏРµРј РЅР°Р№РґРµРЅРЅС‹Р№ peak.
     ------------------------------------------------------------ }
 
   if (BestIndex >= WindowFirst) and
