@@ -114,6 +114,10 @@ type
     procedure DrawEnvelope4Channels(
       Canvas: TCanvas;
       const R: TRectF);
+    procedure DrawEnvelopeSingle(
+      Canvas: TCanvas;
+      const R: TRectF);
+
     procedure PaintBoxPaint(Sender: TObject; Canvas: TCanvas);
     procedure PaintBoxMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Single);
     procedure PaintBoxMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Single);
@@ -1371,16 +1375,22 @@ begin
       TTextAlign.Leading, TTextAlign.Center);
     Exit;
   end;
-{ EODPK envelope is a RAW representation. }
+{ EODPK envelope is a RAW representation. The layout (single overlaid
+  graph vs. four separate graphs) must depend on the current mode ONLY,
+  never on the zoom level. }
 if FEnvelopeActive and
    ((FMode = pmRaw) or (FMode = pmRaw4Channels)) then
 begin
-  DrawEnvelope4Channels(Canvas, R);
+  if FMode = pmRaw4Channels then
+    DrawEnvelope4Channels(Canvas, R)
+  else
+    DrawEnvelopeSingle(Canvas, R);
 
   { selected position / peak marker if needed }
 
   Exit;
 end;
+
 
 { Normal non-envelope data. }
 case FMode of
@@ -2022,9 +2032,246 @@ begin
       TTextAlign.Center);
   end;
 end;
+
+procedure TSignalPlot.DrawEnvelopeSingle(
+  Canvas: TCanvas;
+  const R: TRectF);
+var
+  Ch: Integer;
+
+  MinY, MaxY: Double;
+  VMin, VMax: Double;
+
+  A: array[0..3] of TAlphaColor;
+
+  ViewWidth: Int64;
+  PlotWidth: Integer;
+
+  I, B: Integer;
+  B0, B1: Integer;
+  VisibleCount: Integer;
+
+  P: TWaveEnvelopePoint;
+
+  CenterFrame: Int64;
+
+  X: Single;
+  Y1, Y2: Single;
+
+  ColumnMin: Double;
+  ColumnMax: Double;
+
+  EnvStart, EnvEnd: Int64;
+  FirstVisible, LastVisible: Integer;
+
+  function PointMin(const P: TWaveEnvelopePoint): Double;
+  begin
+    case Ch of
+      0: Result := P.Ch1Min;
+      1: Result := P.Ch2Min;
+      2: Result := P.Ch3Min;
+    else
+      Result := P.Ch4Min;
+    end;
+  end;
+
+  function PointMax(const P: TWaveEnvelopePoint): Double;
+  begin
+    case Ch of
+      0: Result := P.Ch1Max;
+      1: Result := P.Ch2Max;
+      2: Result := P.Ch3Max;
+    else
+      Result := P.Ch4Max;
+    end;
+  end;
+
+begin
+  if Length(FEnvelope) = 0 then
+    Exit;
+
+  if (FViewEnd <= FViewStart) then
+    Exit;
+
+  if R.Width <= 0 then
+    Exit;
+
+  ViewWidth := FViewEnd - FViewStart;
+  if ViewWidth <= 0 then
+    Exit;
+
+  A[0] := TAlphaColorRec.Red;
+  A[1] := TAlphaColorRec.Green;
+  A[2] := TAlphaColorRec.Blue;
+  A[3] := TAlphaColorRec.Orange;
+
+  PlotWidth := Max(1, Ceil(R.Width));
+
+  { --------------------------------------------------------------- }
+  { Find visible envelope indices.                                  }
+  { --------------------------------------------------------------- }
+
+  FirstVisible := -1;
+  LastVisible := -1;
+
+  for I := 0 to High(FEnvelope) do
+  begin
+    EnvStart := FEnvelope[I].StartPosition;
+    EnvEnd   := FEnvelope[I].EndPosition;
+
+    if EnvEnd < FViewStart then
+      Continue;
+
+    if EnvStart > FViewEnd then
+      Break;
+
+    if FirstVisible < 0 then
+      FirstVisible := I;
+
+    LastVisible := I;
+  end;
+
+  if FirstVisible < 0 then
+    Exit;
+
+  { --------------------------------------------------------------- }
+  { One common Y scale across all four channels, from visible data. }
+  { --------------------------------------------------------------- }
+
+  MinY := MaxDouble;
+  MaxY := -MaxDouble;
+
+  for I := FirstVisible to LastVisible do
+  begin
+    P := FEnvelope[I];
+
+    for Ch := 0 to 3 do
+    begin
+      VMin := PointMin(P);
+      VMax := PointMax(P);
+
+      if VMin < MinY then
+        MinY := VMin;
+
+      if VMax > MaxY then
+        MaxY := VMax;
+    end;
+  end;
+
+  if (MinY = MaxDouble) or
+     (MaxY = -MaxDouble) then
+    Exit;
+
+  if Abs(MaxY - MinY) < 1E-12 then
+  begin
+    MinY := MinY - 1;
+    MaxY := MaxY + 1;
+  end
+  else
+  begin
+    VMin := (MaxY - MinY) * 0.05;
+    MinY := MinY - VMin;
+    MaxY := MaxY + VMin;
+  end;
+
+  DrawGrid(Canvas, R, MinY, MaxY, FViewStart, FViewEnd);
+
+  { --------------------------------------------------------------- }
+  { Draw all four channels overlaid on the same graph.              }
+  { --------------------------------------------------------------- }
+
+  for Ch := 0 to 3 do
+  begin
+    Canvas.Stroke.Kind := TBrushKind.Solid;
+    Canvas.Stroke.Color := A[Ch];
+    Canvas.Stroke.Thickness := 1;
+
+    if (LastVisible - FirstVisible + 1) <= PlotWidth then
+    begin
+      for I := FirstVisible to LastVisible do
+      begin
+        P := FEnvelope[I];
+
+        CenterFrame :=
+          P.StartPosition +
+          (P.EndPosition - P.StartPosition) div 2;
+
+        if CenterFrame < FViewStart then
+          Continue;
+
+        if CenterFrame > FViewEnd then
+          Continue;
+
+        X :=
+          R.Left +
+          ((CenterFrame - FViewStart) / ViewWidth) *
+          R.Width;
+
+        VMin := PointMin(P);
+        VMax := PointMax(P);
+
+        Y1 := MapY(VMin, MinY, MaxY, R);
+        Y2 := MapY(VMax, MinY, MaxY, R);
+
+        Canvas.DrawLine(
+          PointF(X, Y1),
+          PointF(X, Y2),
+          1);
+      end;
+    end
+    else
+    begin
+      VisibleCount := LastVisible - FirstVisible + 1;
+
+      for B := 0 to PlotWidth - 1 do
+      begin
+        B0 := FirstVisible + (Int64(B) * VisibleCount) div PlotWidth;
+        B1 := FirstVisible + (Int64(B + 1) * VisibleCount) div PlotWidth - 1;
+
+        if B0 < FirstVisible then
+          B0 := FirstVisible;
+        if B1 > LastVisible then
+          B1 := LastVisible;
+        if B1 < B0 then
+          Continue;
+
+        ColumnMin := MaxDouble;
+        ColumnMax := -MaxDouble;
+
+        for I := B0 to B1 do
+        begin
+          P := FEnvelope[I];
+
+          VMin := PointMin(P);
+          VMax := PointMax(P);
+
+          if VMin < ColumnMin then
+            ColumnMin := VMin;
+
+          if VMax > ColumnMax then
+            ColumnMax := VMax;
+        end;
+
+        if ColumnMin = MaxDouble then
+          Continue;
+
+        X := R.Left + (B + 0.5) * R.Width / PlotWidth;
+
+        Y1 := MapY(ColumnMin, MinY, MaxY, R);
+        Y2 := MapY(ColumnMax, MinY, MaxY, R);
+
+        Canvas.DrawLine(
+          PointF(X, Y1),
+          PointF(X, Y2),
+          1);
+      end;
+    end;
+  end;
+end;
 { ------------------------------------------------------------------ }
 { TOverviewPlot                                                      }
 { ------------------------------------------------------------------ }
+
 
 constructor TOverviewPlot.Create(APaintBox: TPaintBox);
 begin

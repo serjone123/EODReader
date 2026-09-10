@@ -1,4 +1,4 @@
-unit uReadWavMain;
+﻿unit uReadWavMain;
 
 interface
 
@@ -19,6 +19,7 @@ type
     FSaveButton: TButton;
     FPrevButton: TButton;
     FNextButton: TButton;
+    FOpenFolderButton: TButton;
     FApplyButton: TButton;
     FPositionBar: TTrackBar;
     FPeakList: TListBox;
@@ -46,6 +47,7 @@ type
     procedure FPositionBarChange(Sender: TObject);
     procedure FPrevButtonClick(Sender: TObject);
     procedure FSaveButtonClick(Sender: TObject);
+    procedure FOpenFolderButtonClick(Sender: TObject);
     procedure edStartSampleMouseWheel(Sender: TObject; Shift: TShiftState;
       WheelDelta: Integer; var Handled: Boolean);
     procedure edStartSampleChange(Sender: TObject);
@@ -74,6 +76,8 @@ type
 
     FWheelAccumulator: Integer;
 
+    FLastDir: string;
+
     procedure OverviewClick(Sender: TObject; Frame: Int64);
     procedure OverviewRangeSelected(Sender: TObject; AStart, AEnd: Int64);
 
@@ -83,6 +87,7 @@ type
 
     procedure FillPeakListAroundFrame(AFrame: Int64);
     procedure UpdateStatus(const S: string);
+    procedure UpdateCaption;
     procedure ShowPeak(Index: Integer);
     procedure ShowRawPosition(AStartFrame, AEndFrame: Int64);
     procedure ShowPeakFileRange(AStartFrame, AEndFrame: Int64);
@@ -116,14 +121,17 @@ var
 implementation
 
 uses
-  System.Math;
+  System.Math
+  {$IFDEF MSWINDOWS}
+  , Winapi.Windows, Winapi.ShellAPI
+  {$ENDIF};
 
 {$R *.fmx}
 
 procedure TMainForm.FormCreate(Sender: TObject);
 begin
-  Caption := 'EOD Viewer';
   Position := TFormPosition.ScreenCenter;
+  UpdateCaption;
 
   FConfig := DefaultEodDetectorConfig;
   FSession := TEodGuiSession.Create;
@@ -161,6 +169,13 @@ begin
   FPeakListFirstIndex := 0;
   FPeakListRealCount := 0;
   FWheelAccumulator := 0;
+
+  { Код позиционного ползунка использует Value/1000, поэтому Max обязан
+    быть 1000 (у FMX TTrackBar по умолчанию Max=10 — ползунок бы работал
+    только в пределах первого процента файла). }
+  FPositionBar.Max := 1000;
+
+  FStatus.Text := '';
 end;
 
 procedure TMainForm.FormDestroy(Sender: TObject);
@@ -333,6 +348,8 @@ begin
   UpdateStatus(Format('WAV: %.3f sec, %d Hz, %d frames',
     [FSession.TotalFrames / FSession.SampleRate, FSession.SampleRate,
     FSession.TotalFrames]));
+
+  UpdateCaption;
 end;
 
 procedure TMainForm.OpenThreadTerminated(Sender: TObject);
@@ -364,54 +381,30 @@ begin
   FStatus.Text := S;
 end;
 
-// procedure TMainForm.FillPeakList;
-// var
-// Positions: TArray<Int64>;
-// Total: Integer;
-// begin
-// if FSession.PeakCount <= 0 then
-// begin
-// FPeakList.Clear;
-// FPeakListFirstIndex := 0;
-// FPeakListRealCount := 0;
-// Exit;
-// end;
-//
-// Positions := FSession.PeakPositions;
-// Total := Length(Positions);
-//
-// PopulatePeakListRange(Positions, 0, Min(Total, 1000) - 1, Total);
-// end;
-//procedure TMainForm.FillPeakList;
-//var
-//  Total: Int64;
-//  Count: Int64;
-//  FirstIndex: Int64;
-//  Peaks: TPeakArray;
-//begin
-//  if FSession.PeakCount <= 0 then
-//  begin
-//    FPeakList.Clear;
-//    FPeakListFirstIndex := 0;
-//    FPeakListRealCount := 0;
-//    Exit;
-//  end;
-//
-//  Total := FSession.PeakCount;
-//  Count := Min(Total, Int64(1000));
-//
-//  if Count <= 0 then
-//    Exit;
-//
-//  FirstIndex := 0;
-//
-//  if not FSession.ReadRecordInfoPage(
-//  0,
-//  Peaks) then
-//    Exit;
-//
-//  PopulatePeakListRange(Peaks, 0, Length(Peaks) - 1, Total);
-//end;
+procedure TMainForm.UpdateCaption;
+var
+  NameText: string;
+begin
+  if assigned (FSession) then
+
+    case FSession.Mode of
+      dmWav:
+        if FSession.File1 <> '' then
+          NameText := ExtractFileName(FSession.File1) + ' + ' +
+            ExtractFileName(FSession.File2);
+      dmPeakFile:
+        if FSession.PeakFile <> '' then
+          NameText := ExtractFileName(FSession.PeakFile);
+    end;
+
+  if NameText = '' then
+    Caption := 'EOD Viewer'
+  else
+    Caption := 'EOD Viewer - ' + NameText;
+
+  FOpenFolderButton.Enabled := NameText <> '';
+end;
+
 procedure TMainForm.FillPeakList;
 const
   MaxListPeaks = 1000;
@@ -580,6 +573,11 @@ begin
   UpdatePlotMode;
 
   FPlot.SetViewRange(StartFrame, StartFrame + Length(Data) - 1);
+
+  { Синхронизируем красный прямоугольник выделения на обзорном графике
+    с новым диапазоном отображения. SetViewRange не вызывает OnViewChanged,
+    поэтому обновляем обзор вручную. }
+  UpdateOverviewView(StartFrame, StartFrame + Length(Data) - 1);
 
   UpdateStatus(Format('Peak %d/%d: sample %d, time %.6f s, prominence %.6f',
     [Index + 1, FSession.PeakCount, Peak.Position,
@@ -917,11 +915,16 @@ begin
   try
     D.Filter := 'EOD peak files (*.eodpk)|*.eodpk|All files (*.*)|*.*';
     D.Title := 'Open EOD peak file';
+    if FLastDir <> '' then
+      D.InitialDir := FLastDir;
 
     if not D.Execute then
       Exit;
 
+    FLastDir := ExtractFilePath(D.FileName);
+
     FSession.OpenPeakFile(D.FileName);
+    UpdateCaption;
 
     if FSession.TotalFrames > 0 then
     begin
@@ -978,11 +981,14 @@ begin
   try
     D.Filter := 'WAV files (*.wav)|*.wav|All files (*.*)|*.*';
     D.Title := 'Open Tr12 WAV';
+    if FLastDir <> '' then
+      D.InitialDir := FLastDir;
 
     if not D.Execute then
       Exit;
 
     File1 := D.FileName;
+    FLastDir := ExtractFilePath(File1);
 
     D.Title := 'Open Tr34 WAV';
     if not D.Execute then
@@ -1170,7 +1176,15 @@ begin
   try
     D.Filter := 'EOD peak files (*.eodpk)|*.eodpk';
     D.DefaultExt := 'eodpk';
-    D.FileName := 'peaks.eodpk';
+    if FLastDir <> '' then
+      D.InitialDir := FLastDir;
+
+    if FSession.Mode = dmWav then
+      D.FileName := ChangeFileExt(ExtractFileName(FSession.File1), '.eodpk')
+    else if FSession.Mode = dmPeakFile then
+      D.FileName := ChangeFileExt(ExtractFileName(FSession.PeakFile), '.eodpk')
+    else
+      D.FileName := 'peaks.eodpk';
 
     if not D.Execute then
       Exit;
@@ -1180,10 +1194,34 @@ begin
 
     FSession.SavePeakFile(D.FileName);
 
+    FLastDir := ExtractFilePath(D.FileName);
     UpdateStatus('Saved: ' + D.FileName);
   finally
     D.Free;
   end;
+end;
+
+procedure TMainForm.FOpenFolderButtonClick(Sender: TObject);
+var
+  Target: string;
+begin
+  case FSession.Mode of
+    dmWav: Target := FSession.File1;
+    dmPeakFile: Target := FSession.PeakFile;
+  else
+    Exit;
+  end;
+
+  if Target = '' then
+    Exit;
+
+  {$IFDEF MSWINDOWS}
+  { Ключ '/select,' открывает папку и подсвечивает файл в проводнике. }
+  ShellExecute(0, 'open', 'explorer.exe',
+    PChar('/select,"' + Target + '"'), nil, SW_SHOWNORMAL);
+  {$ELSE}
+  UpdateStatus('Opening the file folder is not supported on this platform.');
+  {$ENDIF}
 end;
 
 procedure TMainForm.BuildOverview;
@@ -1398,7 +1436,12 @@ begin
   { <<< FIX: восстановление рабочего диапазона отображения >>> }
   FPlot.GetViewRange(NewStart, NewEnd);
   UpdateOverviewView(NewStart, NewEnd);
+
+  { Заполняем ListBox пиками вокруг выбранной на обзоре точки
+    и подсвечиваем ближайший к ней пик. }
+  FillPeakListAroundFrame(Frame);
 end;
+
 
 procedure TMainForm.OverviewRangeSelected(Sender: TObject; AStart, AEnd: Int64);
 var
@@ -1462,127 +1505,6 @@ begin
   end;
 end;
 
-//procedure TMainForm.FillPeakListAroundFrame(AFrame: Int64);
-//const
-//  HalfWindow = 100;
-//var
-//  Total: Int64;
-//  L, R, Mid: Int64;
-//  P: TPeak;
-//  StartPosition: Int64;
-//  BestIndex: Int64;
-//  BestDistance: Int64;
-//  Distance: Int64;
-//
-//  WindowFirst: Int64;
-//  WindowCount: Int64;
-//
-//  Peaks: TPeakArray;
-//
-//  ListIndex: Integer;
-//begin
-//  if FSession.PeakCount <= 0 then
-//  begin
-//    FPeakList.Clear;
-//    FPeakListFirstIndex := 0;
-//    FPeakListRealCount := 0;
-//    Exit;
-//  end;
-//
-//  Total := FSession.PeakCount;
-//
-//  { ------------------------------------------------------------
-//    Бинарный поиск непосредственно по EODPK.
-//
-//    В памяти НЕ существует массива всех PeakPositions.
-//    ReadRecordInfo читает только фиксированный заголовок одного peak.
-//    ------------------------------------------------------------ }
-//
-//  L := 0;
-//  R := Total - 1;
-//
-//  while L < R do
-//  begin
-//    Mid := L + (R - L) div 2;
-//
-//    if not FSession.ReadRecordInfo(Mid, P, StartPosition) then
-//      Exit;
-//
-//    if P.Position < AFrame then
-//      L := Mid + 1
-//    else
-//      R := Mid;
-//  end;
-//
-//  { L = первый peak с Position >= AFrame. }
-//
-//  BestIndex := L;
-//
-//  if L > 0 then
-//  begin
-//    if not FSession.ReadRecordInfo(L, P, StartPosition) then
-//      Exit;
-//
-//    Distance := Abs(P.Position - AFrame);
-//
-//    if not FSession.ReadRecordInfo(L - 1, P, StartPosition) then
-//      Exit;
-//
-//    if Abs(P.Position - AFrame) < Distance then
-//      BestIndex := L - 1;
-//  end;
-//
-//  { ------------------------------------------------------------
-//    Если найденный peak уже находится в отображаемом окне —
-//    просто перемещаем выделение.
-//    ------------------------------------------------------------ }
-//
-//  if (BestIndex >= FPeakListFirstIndex) and
-//    (BestIndex < FPeakListFirstIndex + FPeakListRealCount) and
-//    (FPeakListRealCount > 0) then
-//  begin
-//    ListIndex := Integer(BestIndex - FPeakListFirstIndex);
-//
-//    if FPeakListFirstIndex > 0 then
-//      Inc(ListIndex);
-//
-//    FPeakList.ItemIndex := ListIndex;
-//
-//    Exit;
-//  end;
-//
-//  { ------------------------------------------------------------
-//    Загружаем только окно +-100 peaks.
-//    ------------------------------------------------------------ }
-//
-//  WindowFirst := Max(Int64(0), BestIndex - HalfWindow);
-//
-//  WindowCount := Min(Int64(HalfWindow * 2 + 1), Total - WindowFirst);
-//
-//  if WindowCount <= 0 then
-//    Exit;
-//
-//  if not FSession.ReadRecordInfoPageInternal(WindowFirst, WindowCount, Peaks)
-//  then
-//    Exit;
-//
-//  PopulatePeakListRange(Peaks, 0, Length(Peaks) - 1, Total);
-//
-//  { ------------------------------------------------------------
-//    Выделяем найденный peak.
-//    ------------------------------------------------------------ }
-//
-//  if (BestIndex >= WindowFirst) and (BestIndex < WindowFirst + Length(Peaks))
-//  then
-//  begin
-//    ListIndex := Integer(BestIndex - WindowFirst);
-//
-//    if WindowFirst > 0 then
-//      Inc(ListIndex);
-//
-//    FPeakList.ItemIndex := ListIndex;
-//  end;
-//end;
 procedure TMainForm.FillPeakListAroundFrame(AFrame: Int64);
 const
   HalfWindow = 100;

@@ -1,7 +1,7 @@
 object MainForm: TMainForm
   Left = 0
   Top = 0
-  Caption = 'PeakViewer'
+  Caption = 'EOD Viewer'
   ClientHeight = 502
   ClientWidth = 774
   FormFactor.Width = 320
@@ -107,6 +107,21 @@ object MainForm: TMainForm
       TextSettings.Trimming = None
       OnClick = FNextButtonClick
     end
+    object FOpenFolderButton: TButton
+      Align = Left
+      Margins.Left = 4.000000000000000000
+      Margins.Top = 4.000000000000000000
+      Margins.Bottom = 4.000000000000000000
+      Position.X = 508.000000000000000000
+      Position.Y = 4.000000000000000000
+      Size.Width = 100.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 6
+      Text = 'Open Folder'
+      TextSettings.Trimming = None
+      OnClick = FOpenFolderButtonClick
+    end
   end
   object FPeakList: TListBox
     Align = Left
@@ -115,7 +130,6 @@ object MainForm: TMainForm
     Size.Height = 452.000000000000000000
     Size.PlatformDefault = False
     TabOrder = 1
-    OnClick = FPeakListClick
     OnMouseDown = FPeakListMouseDown
     DisableFocusEffect = True
     ItemHeight = 15.000000000000000000
