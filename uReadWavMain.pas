@@ -3,7 +3,7 @@
 interface
 
 uses
-  System.SysUtils, System.Types, System.UITypes,
+  System.SysUtils, System.Types, System.UITypes, System.Diagnostics,
   FMX.Types, FMX.Controls, FMX.Forms, FMX.StdCtrls, FMX.Objects, FMX.Edit,
   FMX.ListBox, FMX.Layouts, FMX.Dialogs, FMX.SpinBox
 , System.Classes, FMX.Controls.Presentation
@@ -40,6 +40,8 @@ type
     edEndSample: TEdit;
     OverviewPaintBox: TPaintBox;
     FSettingsButton: TButton;
+    FPlayButton: TButton;
+    FPlaySpeedBox: TComboBox;
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure FAnalyzeButtonClick(Sender: TObject);
@@ -61,6 +63,8 @@ type
     procedure edStartSampleChange(Sender: TObject);
     procedure edEndSampleChange(Sender: TObject);
     procedure FSettingsButtonClick(Sender: TObject);
+    procedure FPlayButtonClick(Sender: TObject);
+    procedure PlaySpeedBoxChange(Sender: TObject);
   private
     FSession: TEodGuiSession;
     FDetector: TEodDetector;
@@ -86,6 +90,24 @@ type
     FWheelAccumulator: Integer;
 
     FLastDir: string;
+
+    { ------------------------- Воспроизведение ------------------------- }
+    { Плеер "проигрывает" запись как последовательность пиков: таймер
+      ведёт виртуальное время (сэмплы), а в момент, когда наступает время
+      очередного пика, этот пик отображается на графике.
+      FPlayButton/FPlaySpeedBox и их обработчики — published (см. выше),
+      т.к. они связаны с компонентами из uReadWavMain.fmx. }
+    FPlayTimer: TTimer;
+    FPlayActive: Boolean;        // идёт воспроизведение
+    FPlayIndex: Integer;         // индекс следующего пика к показу
+    FPlayStartPos: Int64;        // виртуальное "сейчас" в сэмплах на старте
+    FPlayClock: TStopwatch;      // реальное время с момента старта
+    FPlaySpeed: Double;          // множитель скорости (сэмплы/сек умножаются)
+
+    procedure PlayTimerTick(Sender: TObject);
+    procedure StartPlayback;
+    procedure StopPlayback(Finished: Boolean);
+    procedure ApplyPlaybackSpeed;
 
     procedure OverviewClick(Sender: TObject; Frame: Int64);
     procedure OverviewRangeSelected(Sender: TObject; AStart, AEnd: Int64);
@@ -185,6 +207,29 @@ begin
     только в пределах первого процента файла). }
   FPositionBar.Max := 1000;
 
+  { --------------------- Воспроизведение --------------------- }
+  FPlaySpeedBox.Items.Clear;
+  FPlaySpeedBox.Items.Add('0.1x');
+  FPlaySpeedBox.Items.Add('0.25x');
+  FPlaySpeedBox.Items.Add('0.5x');
+  FPlaySpeedBox.Items.Add('1x');
+  FPlaySpeedBox.Items.Add('2x');
+  FPlaySpeedBox.Items.Add('5x');
+  FPlaySpeedBox.Items.Add('10x');
+  FPlaySpeedBox.ItemIndex := 3;
+  FPlaySpeedBox.OnChange := PlaySpeedBoxChange;
+  ApplyPlaybackSpeed;
+
+  FPlayTimer := TTimer.Create(Self);
+  FPlayTimer.Interval := 30;
+  FPlayTimer.OnTimer := PlayTimerTick;
+  FPlayTimer.Enabled := False;
+
+  FPlayActive := False;
+  FPlayIndex := 0;
+  FPlayStartPos := 0;
+  FPlaySpeed := 1.0;
+
   FStatus.Text := '';
 end;
 
@@ -278,6 +323,10 @@ end;
 
 procedure TMainForm.SetAnalysisUiState(Analyzing: Boolean);
 begin
+  if Analyzing then
+    { Анализ/открытие WAV ломает текущую сессию — плей останавливаем. }
+    StopPlayback(False);
+
   FOpenWavButton.Enabled := not Analyzing and not Assigned(FOpenThread);
   FOpenPeakButton.Enabled := not Analyzing;
   FSaveButton.Enabled := not Analyzing and (FSession.PeakCount > 0);
@@ -288,6 +337,8 @@ begin
   edStartSample.Enabled := not Analyzing;
   edEndSample.Enabled := not Analyzing;
   FPositionBar.Enabled := not Analyzing;
+  FPlayButton.Enabled := not Analyzing and (FSession.Mode <> dmNone);
+  FPlaySpeedBox.Enabled := not Analyzing;
 
   FAnalyzeButton.Enabled := True;
 
@@ -916,11 +967,203 @@ begin
   ShowPeak(FCurrentPeak);
 end;
 
+{ ================================================================== }
+{  Воспроизведение                                                   }
+{ ================================================================== }
+
+procedure TMainForm.ApplyPlaybackSpeed;
+begin
+  case FPlaySpeedBox.ItemIndex of
+    0: FPlaySpeed := 0.1;
+    1: FPlaySpeed := 0.25;
+    2: FPlaySpeed := 0.5;
+    4: FPlaySpeed := 2.0;
+    5: FPlaySpeed := 5.0;
+    6: FPlaySpeed := 10.0;
+  else
+    FPlaySpeed := 1.0;
+  end;
+end;
+
+procedure TMainForm.PlaySpeedBoxChange(Sender: TObject);
+var
+  ElapsedS: Double;
+begin
+  if FPlayActive then
+  begin
+    { Фиксируем текущую виртуальную позицию и перезапускаем часы,
+      чтобы смена скорости не дала скачка вперёд или назад. }
+    ElapsedS := FPlayClock.Elapsed.TotalSeconds;
+    FPlayStartPos := FPlayStartPos +
+      Trunc(ElapsedS * FSession.SampleRate * FPlaySpeed);
+    FPlayClock := TStopwatch.StartNew;
+  end;
+
+  ApplyPlaybackSpeed;
+end;
+
+procedure TMainForm.FPlayButtonClick(Sender: TObject);
+begin
+  if FPlayActive then
+    StopPlayback(False)
+  else
+    StartPlayback;
+end;
+
+procedure TMainForm.StartPlayback;
+var
+  Total: Integer;
+  L, R, Mid: Int64;
+  Pos: Int64;
+  StartFrame: Int64;
+begin
+  if FPlayActive then
+    Exit;
+
+  if FSession.Mode = dmNone then
+    Exit;
+
+  Total := FSession.PeakCount;
+
+  if Total <= 0 then
+  begin
+    UpdateStatus('Nothing to play: no peaks.');
+    Exit;
+  end;
+
+  if FSession.SampleRate <= 0 then
+    Exit;
+
+  { Если стоим на последнем пике (например, после полного прохода) —
+    начинаем с начала, иначе это дало бы мгновенный "пустой" плей. }
+  if FCurrentPeak >= Total - 1 then
+    FPlayIndex := 0
+  else if FCurrentPeak >= 0 then
+    FPlayIndex := FCurrentPeak
+  else
+  begin
+    { Пик не выбран: берём первый пик от текущего начала отображения. }
+    StartFrame := CurrentFrame;
+
+    L := 0;
+    R := Total - 1;
+    while L < R do
+    begin
+      Mid := L + (R - L) div 2;
+      Pos := FSession.GetPeakPosition(Integer(Mid));
+      if Pos < StartFrame then
+        L := Mid + 1
+      else
+        R := Mid;
+    end;
+
+    FPlayIndex := Integer(L);
+
+    { Если текущая позиция находится после последнего пика (поиск
+      вышел за конец) — начинаем с последнего пика. }
+    if FPlayIndex >= Total then
+      FPlayIndex := Total - 1;
+  end;
+
+  FPlayStartPos := FSession.GetPeakPosition(FPlayIndex);
+  FPlayClock := TStopwatch.StartNew;
+  FPlayActive := True;
+
+  FPlayButton.Text := 'Stop';
+
+  { Первый пик показываем немедленно, дальше их ведёт таймер. }
+  ShowPeak(FPlayIndex);
+  Inc(FPlayIndex);
+
+  FPlayTimer.Enabled := True;
+
+  UpdateStatus(Format('Playing: peak %d/%d, speed %gx',
+    [FCurrentPeak + 1, Total, FPlaySpeed]));
+end;
+
+procedure TMainForm.StopPlayback(Finished: Boolean);
+begin
+  if not FPlayActive then
+    Exit;
+
+  FPlayTimer.Enabled := False;
+  FPlayActive := False;
+  FPlayButton.Text := 'Play';
+
+  if Finished then
+    UpdateStatus(Format('Playback finished at peak %d/%d.',
+      [FCurrentPeak + 1, FSession.PeakCount]))
+  else
+    UpdateStatus(Format('Playback stopped at peak %d/%d.',
+      [FCurrentPeak + 1, FSession.PeakCount]));
+end;
+
+procedure TMainForm.PlayTimerTick(Sender: TObject);
+var
+  Total: Integer;
+  VirtualNow: Int64;
+  ElapsedS: Double;
+  ShowIdx: Integer;
+  P: Double;
+begin
+  if not FPlayActive then
+    Exit;
+
+  Total := FSession.PeakCount;
+
+  if Total <= 0 then
+  begin
+    StopPlayback(False);
+    Exit;
+  end;
+
+  { Виртуальное "сейчас" в сэмплах: старт + реальное время * скорость.
+    Скорость 1x соответствует реальному темпу записи. }
+  ElapsedS := FPlayClock.Elapsed.TotalSeconds;
+  VirtualNow := FPlayStartPos +
+    Trunc(ElapsedS * FSession.SampleRate * FPlaySpeed);
+
+  { За один тик может наступить время нескольких пиков — показываем
+    последний из них, промежуточные пропускаем. }
+  ShowIdx := -1;
+  while (FPlayIndex < Total) and
+        (FSession.GetPeakPosition(FPlayIndex) <= VirtualNow) do
+  begin
+    ShowIdx := FPlayIndex;
+    Inc(FPlayIndex);
+  end;
+
+  if ShowIdx >= 0 then
+    ShowPeak(ShowIdx);
+
+  { Ползунок позиции двигаем молча — сам он перерисовывать ничего не должен. }
+  if FSession.TotalFrames > 0 then
+  begin
+    P := VirtualNow / FSession.TotalFrames;
+    if P < 0 then
+      P := 0
+    else if P > 1 then
+      P := 1;
+
+    FUpdating := True;
+    try
+      FPositionBar.Value := P * 1000;
+    finally
+      FUpdating := False;
+    end;
+  end;
+
+  if FPlayIndex >= Total then
+    StopPlayback(True);
+end;
+
 procedure TMainForm.FOpenPeakButtonClick(Sender: TObject);
 var
   D: TOpenDialog;
   StartFrame, EndFrame: Int64;
 begin
+  StopPlayback(False);
+
   D := TOpenDialog.Create(Self);
   try
     D.Filter := 'EOD peak files (*.eodpk)|*.eodpk|All files (*.*)|*.*';
@@ -1024,6 +1267,9 @@ end;
 
 procedure TMainForm.FormCloseQuery(Sender: TObject; var CanClose: Boolean);
 begin
+  { Плеер живёт только в главном потоке — его достаточно просто остановить. }
+  StopPlayback(False);
+
   if Assigned(FAnalysis) or Assigned(FOpenThread) then
   begin
     FClosing := True;
