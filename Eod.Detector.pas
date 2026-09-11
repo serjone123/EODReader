@@ -32,6 +32,18 @@ uses
   System.SysUtils, System.Math, Eod.AudioSource, Eod.Statistics, Eod.Fir15,
   Eod.Peaks, Eod.Classifier;
 
+const
+  { TFir15.Process only produces valid output for indices
+    [8 .. Length(Input)-9] (see Eod.Fir15, exact geometry of fir15.m).
+    To get a full N-sample core output for a chunk of length N we must
+    feed it N + 2*Fir15HalfWidth samples, with the core block starting
+    at offset Fir15HalfWidth.
+
+    NOTE: this used to be 7 on each side, which only yields N-2 valid
+    core samples instead of N — the first and last sample of every
+    chunk were silently left at 0 in AllFiltered. That is now fixed. }
+  Fir15HalfWidth = 8;
+
 function AppendEvents(var A: TEodEventArray; const B: TEodEventArray): Integer;
 var
   OldN, I: Integer;
@@ -70,7 +82,7 @@ function TEodDetector.AnalyzePeaks(const File1, File2: string; MaxFrames: Int64;
 var
   Source: TFourChannelAudioSource;
   Fir: TFir15;
-  Audio, Std, Filtered: TFloatArray;
+  Std, Filtered: TFloatArray;
   Chunk: TAudioChunk;
   FirInput: TFloatArray;
   AllFiltered: TFloatArray;
@@ -101,16 +113,18 @@ begin
         if Frame + N > Total then
           N := Total - Frame;
 
-        { Read 7 samples on each side of the core block so FIR15 has the
-          same neighbourhood it would have in one continuous array. }
-        DesiredStart := Frame - 7;
-        DesiredEnd := Frame + N + 7;
+        { Read Fir15HalfWidth samples on each side of the core block so
+          FIR15 has the same neighbourhood it would have in one continuous
+          array, and so its valid output range exactly covers the N core
+          samples (see Fir15HalfWidth comment above). }
+        DesiredStart := Frame - Fir15HalfWidth;
+        DesiredEnd := Frame + N + Fir15HalfWidth;
         ReadStart := Max(0, DesiredStart);
         ReadCount := Min(Source.TotalFrames, DesiredEnd) - ReadStart;
         if ReadCount < 0 then
           ReadCount := 0;
 
-        SetLength(FirInput, Integer(N) + 14);
+        SetLength(FirInput, Integer(N) + 2 * Fir15HalfWidth);
         for I := 0 to High(FirInput) do
           FirInput[I] := 0;
 
@@ -125,7 +139,7 @@ begin
 
         Fir.Process(FirInput, Filtered);
 
-        DestOffset := Integer(Frame - DesiredStart);
+        DestOffset := Integer(Frame - DesiredStart); { = Fir15HalfWidth }
         for I := 0 to N - 1 do
         begin
           CoreIndex := I + DestOffset;

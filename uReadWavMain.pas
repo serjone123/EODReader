@@ -5,10 +5,17 @@ interface
 uses
   System.SysUtils, System.Types, System.UITypes,
   FMX.Types, FMX.Controls, FMX.Forms, FMX.StdCtrls, FMX.Objects, FMX.Edit,
-  FMX.ListBox, FMX.Layouts, FMX.Dialogs, FMX.SpinBox,
-  Eod.Types, Eod.Detector, Eod.PeakStore, Eod.GuiModel, Eod.GuiPlot,
-  System.Classes, FMX.Controls.Presentation,
-  Eod.AnalysisThread, Eod.WavOpenThread;
+  FMX.ListBox, FMX.Layouts, FMX.Dialogs, FMX.SpinBox
+, System.Classes, FMX.Controls.Presentation
+, Eod.AnalysisThread
+, Eod.Types
+, Eod.Detector
+, Eod.PeakStore
+, Eod.GuiModel
+, Eod.GuiPlot
+, Eod.WavOpenThread
+, Eod.ConfigStore, Eod.SettingsForm
+ ;
 
 type
   TMainForm = class(TForm)
@@ -32,6 +39,7 @@ type
     LayNavi: TLayout;
     edEndSample: TEdit;
     OverviewPaintBox: TPaintBox;
+    FSettingsButton: TButton;
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure FAnalyzeButtonClick(Sender: TObject);
@@ -52,6 +60,7 @@ type
       WheelDelta: Integer; var Handled: Boolean);
     procedure edStartSampleChange(Sender: TObject);
     procedure edEndSampleChange(Sender: TObject);
+    procedure FSettingsButtonClick(Sender: TObject);
   private
     FSession: TEodGuiSession;
     FDetector: TEodDetector;
@@ -133,7 +142,8 @@ begin
   Position := TFormPosition.ScreenCenter;
   UpdateCaption;
 
-  FConfig := DefaultEodDetectorConfig;
+  if not LoadDetectorConfig(GetDefaultConfigFileName, FConfig) then
+    FConfig := DefaultEodDetectorConfig;
   FSession := TEodGuiSession.Create;
   FDetector := TEodDetector.Create(FConfig);
 
@@ -1645,4 +1655,33 @@ begin
       FPeakList.ItemIndex := ListIndex;
   end;
 end;
+
+procedure TMainForm.FSettingsButtonClick(Sender: TObject);
+var
+  Dlg: TEodSettingsForm;
+  NewConfig: TEodDetectorConfig;
+begin
+  if Assigned(FAnalysis) then
+  begin
+    UpdateStatus('Cannot change settings while analysis is running.');
+    Exit;
+  end;
+
+  Dlg := TEodSettingsForm.CreateWithConfig(Self, FConfig);
+  try
+    if Dlg.Execute(NewConfig) then
+    begin
+      FConfig := NewConfig;
+
+      FDetector.Free;
+      FDetector := TEodDetector.Create(FConfig);
+
+      SaveDetectorConfig(GetDefaultConfigFileName, FConfig);
+      UpdateStatus('Settings saved to ' + GetDefaultConfigFileName);
+    end;
+  finally
+    Dlg.Free;
+  end;
+end;
+
 end.

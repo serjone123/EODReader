@@ -122,6 +122,21 @@ object MainForm: TMainForm
       TextSettings.Trimming = None
       OnClick = FOpenFolderButtonClick
     end
+    object FSettingsButton: TButton
+      Align = Left
+      Margins.Left = 4.000000000000000000
+      Margins.Top = 4.000000000000000000
+      Margins.Bottom = 4.000000000000000000
+      Position.X = 612.000000000000000000
+      Position.Y = 4.000000000000000000
+      Size.Width = 80.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 7
+      Text = 'Settings'
+      TextSettings.Trimming = None
+      OnClick = FSettingsButtonClick
+    end
   end
   object FPeakList: TListBox
     Align = Left

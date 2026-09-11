@@ -19,7 +19,9 @@ uses
   Eod.PeakStore in 'Eod.PeakStore.pas',
   Eod.SignalCache in 'Eod.SignalCache.pas',
   Eod.AnalysisThread in 'Eod.AnalysisThread.pas',
-  Eod.WavOpenThread in 'Eod.WavOpenThread.pas';
+  Eod.WavOpenThread in 'Eod.WavOpenThread.pas',
+  Eod.ConfigStore in 'Eod.ConfigStore.pas',
+  Eod.SettingsForm in 'Eod.SettingsForm.pas';
 
 {$R *.res}
 
