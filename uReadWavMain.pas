@@ -15,6 +15,7 @@ uses
 , GUI.Plot
 , Threads.WavOpen
 , Core.ConfigStore, GUI.SettingsForm
+, GUI.FileNaming
  ;
 
 type
@@ -1259,11 +1260,39 @@ begin
     File1 := D.FileName;
     FLastDir := ExtractFilePath(File1);
 
-    D.Title := 'Open Tr34 WAV';
-    if not D.Execute then
-      Exit;
+    if TryGetPairedWavFileName(File1, File2) and FileExists(File2) then
+    begin
+      { Парный файл найден автоматически. }
+    end
+    else
+    begin
+      if TryGetPairedWavFileName(File1, File2) then
+      begin
+        if MessageDlg(
+          'Парный WAV не найден:' + sLineBreak +
+          File2 + sLineBreak + sLineBreak +
+          'Выбрать второй WAV вручную?',
+          TMsgDlgType.mtWarning,
+          [TMsgDlgBtn.mbYes, TMsgDlgBtn.mbNo], 0) <> mrYes then
+          Exit;
+      end
+      else
+      begin
+        if MessageDlg(
+          'Не удалось определить имя парного WAV.' + sLineBreak +
+          'Выбрать второй WAV вручную?',
+          TMsgDlgType.mtWarning,
+          [TMsgDlgBtn.mbYes, TMsgDlgBtn.mbNo], 0) <> mrYes then
+          Exit;
+      end;
 
-    File2 := D.FileName;
+      D.Title := 'Open paired WAV';
+
+      if not D.Execute then
+        Exit;
+
+      File2 := D.FileName;
+    end;
   finally
     D.Free;
   end;
@@ -1452,7 +1481,7 @@ begin
       D.InitialDir := FLastDir;
 
     if FSession.Mode = dmWav then
-      D.FileName := ChangeFileExt(ExtractFileName(FSession.File1), '.eodpk')
+      D.FileName := GetSuggestedEodPeakFileName(FSession.File1)
     else if FSession.Mode = dmPeakFile then
       D.FileName := ChangeFileExt(ExtractFileName(FSession.PeakFile), '.eodpk')
     else
