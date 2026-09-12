@@ -4,8 +4,8 @@ interface
 
 uses
   System.SysUtils, System.Types, System.UITypes, System.Math,
-  FMX.Types, FMX.Objects, FMX.Graphics,
-  Core.Types, System.Classes, System.Generics.Collections;
+  FMX.Types, FMX.Objects, FMX.Graphics, FMX.Forms,
+  Core.Types, System.Classes, System.Generics.Collections, FMX.Menus;
 
 type
   TPlotMode = (
@@ -117,6 +117,7 @@ type
   TSignalPlot = class
   private
     FPaintBox: TPaintBox;
+    PopupMenuImg: TPopupMenu;
     FData: TAudioChunk;
     FStd: TFloatArray;
     FFir: TFloatArray;
@@ -187,6 +188,7 @@ type
     procedure ClampView;
     procedure DoViewChanged;
     function ViewWidth: Int64;
+    procedure CopyIMG(Sender: TObject);
   public
     constructor Create(APaintBox: TPaintBox);
     destructor Destroy; override;
@@ -223,6 +225,9 @@ const
   EnvelopeResolutionLimit = 10000;
 implementation
 
+uses
+  FMX.Platform, System.Rtti;
+
 constructor TSignalPlot.Create(APaintBox: TPaintBox);
 begin
   inherited Create;
@@ -247,7 +252,9 @@ begin
   FViewEnd := 0;
   FMaxView := MaxViewSamples;
 //  FLastMouseX := 0;
-  FLastMouseX := FPaintBox.Width / 2
+  FLastMouseX := FPaintBox.Width / 2 ;
+  PopupMenuImg:= TPopupMenu.Create(APaintBox);
+  PopupMenuImg.Parent:= APaintBox;
 end;
 
 destructor TSignalPlot.Destroy;
@@ -668,20 +675,66 @@ begin
 end;
 
 { ------------------------------------------------------------------ }
+{  Menu                                                    }
+{ ------------------------------------------------------------------ }
+procedure TSignalPlot.CopyIMG(Sender: TObject);
+var
+  ClipboardService: IFMXClipboardService;
+  Bitmap: TBitmap;
+begin
+
+  try
+
+
+    // Проверяем, что изображение действительно загрузилось
+//    if FPaintBox.paiCanvas.Bitmap.IsEmpty then
+//      Exit;
+
+    // Получаем сервис буфера обмена
+//    if TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, ClipboardService) then
+//      // Передаём изображение в буфер. Сервис сам создаёт копию данных,
+//      // поэтому после вызова Bitmap можно безопасно освободить
+//      ClipboardService.SetClipboard(TValue.From<TBitmap>(FPaintBox.Canvas.Bitmap));
+  finally
+//    Bitmap.Free;
+  end;
+
+
+end;
+{ ------------------------------------------------------------------ }
 {  Mouse handlers                                                    }
 { ------------------------------------------------------------------ }
+
+function AddMenuItem(PM: TPopupMenu; AText: string; AAction: TNotifyEvent):TMenuItem;
+begin
+  result := TMenuItem.Create(PM)  ;
+  result.Parent:= PM;
+  result.Text:=AText ;
+  result.OnClick:=AAction ;
+end;
 
 procedure TSignalPlot.PaintBoxMouseDown(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Single);
 begin
-  if Button <> TMouseButton.mbLeft then
-    Exit;
+  if Button = TMouseButton.mbLeft then
+    begin
+      FDragging := True;
+      FDragStartX := X;
+      FDragStartViewStart := FViewStart;
+      FDragStartViewEnd := FViewEnd;
+      FLastMouseX := X
+    end
+  else  if Button = TMouseButton.mbRight then
+    begin
+      for var I := 0 to PopupMenuImg.ItemsCount-1  do
+        begin
+          PopupMenuImg.Items[0].Free ;
+        end;
 
-  FDragging := True;
-  FDragStartX := X;
-  FDragStartViewStart := FViewStart;
-  FDragStartViewEnd := FViewEnd;
-  FLastMouseX := X;
+      AddMenuItem(PopupMenuImg, 'Copy ', CopyIMG);
+      PopupMenuImg.Popup(Screen.MousePos.x, Screen.MousePos.y)
+    end;
+
 end;
 
 procedure TSignalPlot.PaintBoxMouseMove(Sender: TObject; Shift: TShiftState;
