@@ -1,9 +1,9 @@
-unit Eod.Peaks;
+unit Signal.Peaks;
 
 interface
 
 uses
-  System.SysUtils, Eod.Types;
+  System.SysUtils, Core.Types;
 
 function FindPeaksProminence(const X: TFloatArray; MinProminence: Single): TPeakArray;
 

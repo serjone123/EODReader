@@ -1,9 +1,9 @@
-unit Eod.Fir15;
+unit Signal.Fir15;
 
 interface
 
 uses
-  Eod.Types;
+  Core.Types;
 
 type
   TFir15 = class

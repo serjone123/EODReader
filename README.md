@@ -1,4 +1,4 @@
-# EODReader (EOD Viewer)
+﻿# EODReader (EOD Viewer)
 
 Настольное приложение (Delphi 12 / FireMonkey, Win32) для просмотра и анализа
 записей электрических разрядов рыб (EOD — Electric Organ Discharge).
@@ -43,11 +43,11 @@
 ## Форматы данных
 
 ### Вход: пара стерео-WAV
-`TFourChannelAudioSource` (Eod.AudioSource) объединяет два стерео-WAV в один
+`TFourChannelAudioSource` (IO.AudioSource) объединяет два стерео-WAV в один
 поток 4-канальных кадров `TAudioFrame` (4 × Single). Чтение WAV — Eod.WavReader.
 
 ### Формат `.eodpk` (версия 3)
-Единицы: `Eod.PeakStore` (`TEodPeakStore`). Раскладка файла:
+Единицы: `IO.PeakStore` (`TEodPeakStore`). Раскладка файла:
 
 ```
 Header (TEodPeakFileHeader: magic, version, SampleRate, PeakCount, TotalFrames,
@@ -71,7 +71,7 @@ Cache level 0 … N
 
 ## Конфигурация
 
-`config.json` рядом с exe (`Eod.ConfigStore`). Поля — `TEodDetectorConfig`:
+`config.json` рядом с exe (`Core.ConfigStore`). Поля — `TEodDetectorConfig`:
 `PeakProminence`, `CorrelationThreshold`, `WindowBefore/After`,
 `ExtractionBefore/After`, `ChunkSize`, `DuplicateDistance`.
 При отсутствии/повреждении файла молча используются значения по умолчанию.
@@ -95,22 +95,22 @@ Cache level 0 … N
 |---|---|
 | `ReadEOD.dpr` | Точка входа, список всех юнитов. |
 | `uReadWavMain.pas` + `.fmx` | Главная форма `TMainForm`: вся логика UI, навигация, воспроизведение. |
-| `Eod.GuiModel.pas` | `TEodGuiSession` — сессия поверх WAV-пары (`dmWav`) или `.eodpk` (`dmPeakFile`); единый API чтения сегментов/пиков для GUI. |
-| `Eod.GuiPlot.pas` | `TSignalPlot` (основной график, режимы, зум/пан) и `TOverviewPlot` (обзорный график). |
-| `Eod.PeakStore.pas` | Формат `.eodpk` v3: чтение/запись записей пиков, страницы, многоуровневый кэш огибающей. |
-| `Eod.Peaks.pas` | `FindPeaksProminence` — O(N) поиск пиков по prominence. |
-| `Eod.Detector.pas` | `TEodDetector` — конвейер анализа (`AnalyzePeaks`), прогресс/отмена. |
+| `GUI.Model.pas` | `TEodGuiSession` — сессия поверх WAV-пары (`dmWav`) или `.eodpk` (`dmPeakFile`); единый API чтения сегментов/пиков для GUI. |
+| `GUI.Plot.pas` | `TSignalPlot` (основной график, режимы, зум/пан) и `TOverviewPlot` (обзорный график). |
+| `IO.PeakStore.pas` | Формат `.eodpk` v3: чтение/запись записей пиков, страницы, многоуровневый кэш огибающей. |
+| `Signal.Peaks.pas` | `FindPeaksProminence` — O(N) поиск пиков по prominence. |
+| `Detection.Detector.pas` | `TEodDetector` — конвейер анализа (`AnalyzePeaks`), прогресс/отмена. |
 | `Eod.Fir15.pas` | FIR-фильтр 15-го порядка. |
-| `Eod.Statistics.pas` | STD по 4 каналам (покадрово). |
-| `Eod.Correlation.pas`, `Eod.Templates.pas`, `Eod.Classifier.pas` | Корреляция с шаблонами и классификация типов рыбы (Gnat / Morm / Stim). |
-| `Eod.AudioSource.pas` | `TFourChannelAudioSource`: два стерео-WAV → поток 4-канальных кадров. |
-| `Eod.WavReader.pas` | Разбор WAV. |
-| `Eod.SignalCache.pas` | Кэш сегментов сигнала. |
-| `Eod.AnalysisThread.pas` | `TEodAnalysisThread` — фоновый анализ (FreeOnTerminate, отмена через TEvent). |
-| `Eod.WavOpenThread.pas` | `TEodWavOpenThread` — фоновое открытие WAV-пары. |
-| `Eod.ConfigStore.pas` | Загрузка/сохранение `config.json`. |
+| `Signal.Statistics.pas` | STD по 4 каналам (покадрово). |
+| `Detection.Correlation.pas`, `Detection.Templates.pas`, `Detection.Classifier.pas` | Корреляция с шаблонами и классификация типов рыбы (Gnat / Morm / Stim). |
+| `IO.AudioSource.pas` | `TFourChannelAudioSource`: два стерео-WAV → поток 4-канальных кадров. |
+| `IO.WavReader.pas` | Разбор WAV. |
+| `IO.SignalCache.pas` | Кэш сегментов сигнала. |
+| `Threads.Analysis.pas` | `TEodAnalysisThread` — фоновый анализ (FreeOnTerminate, отмена через TEvent). |
+| `Threads.WavOpen.pas` | `TEodWavOpenThread` — фоновое открытие WAV-пары. |
+| `Core.ConfigStore.pas` | Загрузка/сохранение `config.json`. |
 | `Eod.SettingsForm.pas` | Диалог настроек детектора. |
-| `Eod.Types.pas` | Общие типы: `TPeak`, `TAudioFrame`, `TEodDetectorConfig`, огибающая и т.п. |
+| `Core.Types.pas` | Общие типы: `TPeak`, `TAudioFrame`, `TEodDetectorConfig`, огибающая и т.п. |
 
 Помимо основного проекта в репозитории есть тестовые проекты
 (`Eod.Tests`, `Eod.PeakTest`, `Eod.IpiTest`, `Eod.ExtractTest`, `TestPeakStoreFast`;

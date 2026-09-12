@@ -1,9 +1,9 @@
-unit Eod.Detector;
+unit Detection.Detector;
 
 interface
 
 uses
-  Eod.Types;
+  Core.Types;
 
 type
   TDetectorProgressEvent = procedure(Sender: TObject; Processed, Total: Int64) of object;
@@ -29,8 +29,8 @@ type
 implementation
 
 uses
-  System.SysUtils, System.Math, Eod.AudioSource, Eod.Statistics, Eod.Fir15,
-  Eod.Peaks, Eod.Classifier;
+  System.SysUtils, System.Math, IO.AudioSource, Signal.Statistics, Signal.Fir15,
+  Signal.Peaks, Detection.Classifier;
 
 const
   { TFir15.Process only produces valid output for indices

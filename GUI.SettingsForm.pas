@@ -1,4 +1,4 @@
-unit Eod.SettingsForm;
+unit GUI.SettingsForm;
 
 { A small modal dialog that lets the user edit the previously-hardcoded
   TEodDetectorConfig fields. Built entirely in code (no .fmx resource),
@@ -9,7 +9,7 @@ interface
 uses
   System.SysUtils, System.UITypes, System.Types, System.Classes,
   FMX.Types, FMX.Forms, FMX.StdCtrls, FMX.Edit, FMX.Layouts, FMX.Controls,
-  Eod.Types;
+  Core.Types;
 
 type
   TEodSettingsForm = class(TForm)

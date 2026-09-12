@@ -1,9 +1,9 @@
-unit Eod.Statistics;
+unit Signal.Statistics;
 
 interface
 
 uses
-  Eod.Types;
+  Core.Types;
 
 function Std4(const A, B, C, D: Single): Single;
 procedure CalculateStdChunk(const Input: TAudioChunk; var Output: TFloatArray);

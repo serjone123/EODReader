@@ -1,10 +1,10 @@
-unit Eod.WavOpenThread;
+unit Threads.WavOpen;
 
 interface
 
 uses
   System.Classes, System.SysUtils, System.SyncObjs,
-  Eod.GuiModel;
+  GUI.Model;
 
 type
   TWavOpenProgressEvent = procedure(Sender: TObject; Stage: Integer;

@@ -1,11 +1,11 @@
-﻿unit Eod.GuiPlot;
+﻿unit GUI.Plot;
 
 interface
 
 uses
   System.SysUtils, System.Types, System.UITypes, System.Math,
   FMX.Types, FMX.Objects, FMX.Graphics,
-  Eod.Types, System.Classes, System.Generics.Collections;
+  Core.Types, System.Classes, System.Generics.Collections;
 
 type
   TPlotMode = (

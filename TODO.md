@@ -1,4 +1,4 @@
-# TODO.md — план развития EODReader
+﻿# TODO.md — план развития EODReader
 
 Этот файл — рабочий план проекта. Все пункты имеют приоритет и статус.
 После выполнения пункт переносится в раздел **Выполнено** в конце файла с краткой пометкой о результате. Если выполнение частичное — пункт остаётся в активном разделе, а прогресс фиксируется в `HISTORY.md`.
@@ -37,34 +37,7 @@
 - [ ] Создать end-to-end тест с эталонными результатами: входная запись → ожидаемые позиции событий, типы, каналы и допустимые погрешности.
 - [ ] Зафиксировать в документации математическую модель детектора: почему используется STD по четырём каналам, какие единицы у порогов и как интерпретируются признаки.
 
-## P1 — структура исходников и переименование модулей
 
-Сохранить **все `.pas` в одной папке**, но заменить бессмысленный префикс `Eod.` на имя логической подсистемы. Имя файла должно отражать слой/назначение.
-
-Целевая схема:
-
-- `[ ]` `Eod.Types.pas` → `Core.Types.pas`
-- `[ ]` `Eod.ConfigStore.pas` → `Core.ConfigStore.pas`
-- `[ ]` `Eod.WavReader.pas` → `IO.WavReader.pas`
-- `[ ]` `Eod.AudioSource.pas` → `IO.AudioSource.pas`
-- `[ ]` `Eod.PeakStore.pas` → `IO.PeakStore.pas`
-- `[ ]` `Eod.SignalCache.pas` → `IO.SignalCache.pas`
-- `[ ]` `Eod.Statistics.pas` → `Signal.Statistics.pas`
-- `[ ]` `Eod.Fir15.pas` → `Signal.Fir15.pas`
-- `[ ]` `Eod.Peaks.pas` → `Signal.Peaks.pas`
-- `[ ]` `Eod.Correlation.pas` → `Detection.Correlation.pas`
-- `[ ]` `Eod.Templates.pas` → `Detection.Templates.pas`
-- `[ ]` `Eod.Classifier.pas` → `Detection.Classifier.pas`
-- `[ ]` `Eod.Detector.pas` → `Detection.Detector.pas`
-- `[ ]` `Eod.GuiModel.pas` → `GUI.Model.pas`
-- `[ ]` `Eod.GuiPlot.pas` → `GUI.Plot.pas`
-- `[ ]` `Eod.AnalysisThread.pas` → `Threads.Analysis.pas`
-- `[ ]` `Eod.WavOpenThread.pas` → `Threads.WavOpen.pas`
-- `[ ]` `Eod.SettingsForm.pas` → `GUI.SettingsForm.pas`
-
-Главное правило переименования: **сначала проверить все `uses`, project/source list, тестовые проекты и ссылки по репозиторию; затем переименовывать файлы без изменения логики.** Переименование должно быть отдельным логическим шагом и не смешиваться с алгоритмическим рефакторингом.
-
-После переименования обновить `README.md`, `AGENTS.md`, проектные файлы и тесты.
 
 ## P1 — явная модель конвейера обработки
 
@@ -122,3 +95,32 @@
 При переносе пункта сюда сохранять его формулировку и добавлять краткий результат, например:
 
 - `[x] Исправить ...` — исправлено, добавлен regression test; подробности: `HISTORY.md`, запись от YYYY-MM-DD.
+
+[x] ## P1 — структура исходников и переименование модулей - выполнено 2026-09-12
+
+Сохранить **все `.pas` в одной папке**, но заменить бессмысленный префикс `Eod.` на имя логической подсистемы. Имя файла должно отражать слой/назначение.
+
+Целевая схема:
+
+- `[ ]` `Core.Types.pas` → `Core.Types.pas`
+- `[ ]` `Eod.ConfigStore.pas` → `Core.ConfigStore.pas`
+- `[ ]` `Eod.WavReader.pas` → `IO.WavReader.pas`
+- `[ ]` `Eod.AudioSource.pas` → `IO.AudioSource.pas`
+- `[ ]` `Eod.PeakStore.pas` → `IO.PeakStore.pas`
+- `[ ]` `Eod.SignalCache.pas` → `IO.SignalCache.pas`
+- `[ ]` `Eod.Statistics.pas` → `Signal.Statistics.pas`
+- `[ ]` `Eod.Fir15.pas` → `Signal.Fir15.pas`
+- `[ ]` `Eod.Peaks.pas` → `Signal.Peaks.pas`
+- `[ ]` `Eod.Correlation.pas` → `Detection.Correlation.pas`
+- `[ ]` `Eod.Templates.pas` → `Detection.Templates.pas`
+- `[ ]` `Eod.Classifier.pas` → `Detection.Classifier.pas`
+- `[ ]` `Eod.Detector.pas` → `Detection.Detector.pas`
+- `[ ]` `Eod.GuiModel.pas` → `GUI.Model.pas`
+- `[ ]` `Eod.GuiPlot.pas` → `GUI.Plot.pas`
+- `[ ]` `Eod.AnalysisThread.pas` → `Threads.Analysis.pas`
+- `[ ]` `Eod.WavOpenThread.pas` → `Threads.WavOpen.pas`
+- `[ ]` `Eod.SettingsForm.pas` → `GUI.SettingsForm.pas`
+
+Главное правило переименования: **сначала проверить все `uses`, project/source list, тестовые проекты и ссылки по репозиторию; затем переименовывать файлы без изменения логики.** Переименование должно быть отдельным логическим шагом и не смешиваться с алгоритмическим рефакторингом.
+
+После переименования обновить `README.md`, `AGENTS.md`, проектные файлы и тесты.

@@ -1,4 +1,4 @@
-unit Eod.Types;
+unit Core.Types;
 
 interface
 

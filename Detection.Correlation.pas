@@ -1,9 +1,9 @@
-unit Eod.Correlation;
+unit Detection.Correlation;
 
 interface
 
 uses
-  Eod.Types;
+  Core.Types;
 
 function PearsonCorrelation(const A, B: TFloatArray): Double;
 function TemplateCorrelation(const Template, Test: TFloatArray): TCorrelationResult;

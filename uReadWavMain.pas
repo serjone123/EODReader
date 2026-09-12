@@ -7,14 +7,14 @@ uses
   FMX.Types, FMX.Controls, FMX.Forms, FMX.StdCtrls, FMX.Objects, FMX.Edit,
   FMX.ListBox, FMX.Layouts, FMX.Dialogs, FMX.SpinBox
 , System.Classes, FMX.Controls.Presentation
-, Eod.AnalysisThread
-, Eod.Types
-, Eod.Detector
-, Eod.PeakStore
-, Eod.GuiModel
-, Eod.GuiPlot
-, Eod.WavOpenThread
-, Eod.ConfigStore, Eod.SettingsForm
+, Threads.Analysis
+, Core.Types
+, Detection.Detector
+, IO.PeakStore
+, GUI.Model
+, GUI.Plot
+, Threads.WavOpen
+, Core.ConfigStore, GUI.SettingsForm
  ;
 
 type

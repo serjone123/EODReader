@@ -1,8 +1,8 @@
-unit Eod.Templates;
+unit Detection.Templates;
 
 interface
 
-uses Eod.Types;
+uses Core.Types;
 
 function GnatTemplate: TFloatArray;
 function MormTemplate: TFloatArray;

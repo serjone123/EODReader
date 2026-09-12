@@ -1,10 +1,10 @@
-unit Eod.GuiModel;
+unit GUI.Model;
 
 interface
 
 uses
   System.SysUtils, System.Classes, System.Math,
-  Eod.Types, Eod.Detector, Eod.PeakStore, Eod.AudioSource, Eod.Statistics;
+  Core.Types, Detection.Detector, IO.PeakStore, IO.AudioSource, Signal.Statistics;
 
 type
   TDataMode = (dmNone, dmWav, dmPeakFile);

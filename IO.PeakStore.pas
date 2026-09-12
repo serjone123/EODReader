@@ -1,4 +1,4 @@
-unit Eod.PeakStore;
+unit IO.PeakStore;
 
 interface
 
@@ -6,7 +6,7 @@ uses
   System.SysUtils,
   System.Classes,
   System.Math,
-  Eod.Types;
+  Core.Types;
 
 const
   EodPeakPageSize = 5000;
@@ -243,7 +243,7 @@ type
 implementation
 
 uses
-  Eod.AudioSource;
+  IO.AudioSource;
 
 class function TEodPeakStore.HeaderMagic: TPeakFileMagic;
 begin

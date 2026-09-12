@@ -1,9 +1,9 @@
-unit Eod.SignalCache;
+unit IO.SignalCache;
 
 interface
 
 uses
-  System.SysUtils, System.Classes, System.IOUtils, Eod.Types;
+  System.SysUtils, System.Classes, System.IOUtils, Core.Types;
 
 type
   TFloatSignalCache = class

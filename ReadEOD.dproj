@@ -227,25 +227,28 @@
             <Form>MainForm</Form>
             <FormType>fmx</FormType>
         </DCCReference>
-        <DCCReference Include="Eod.Types.pas"/>
-        <DCCReference Include="Eod.WavReader.pas"/>
-        <DCCReference Include="Eod.Fir15.pas"/>
-        <DCCReference Include="Eod.Correlation.pas"/>
-        <DCCReference Include="Eod.Peaks.pas"/>
-        <DCCReference Include="Eod.Statistics.pas"/>
-        <DCCReference Include="Eod.Templates.pas"/>
-        <DCCReference Include="Eod.AudioSource.pas"/>
-        <DCCReference Include="Eod.Classifier.pas"/>
-        <DCCReference Include="Eod.Detector.pas"/>
-        <DCCReference Include="Eod.GuiModel.pas"/>
-        <DCCReference Include="Eod.GuiPlot.pas"/>
-        <DCCReference Include="Eod.PeakStore.pas"/>
-        <DCCReference Include="Eod.SignalCache.pas"/>
-        <DCCReference Include="Eod.AnalysisThread.pas"/>
-        <DCCReference Include="Eod.WavOpenThread.pas"/>
-        <DCCReference Include="Eod.ConfigStore.pas"/>
-        <DCCReference Include="Eod.SettingsForm.pas"/>
+        <DCCReference Include="Core.Types.pas"/>
+        <DCCReference Include="IO.WavReader.pas"/>
+        <DCCReference Include="Signal.Fir15.pas"/>
+        <DCCReference Include="Detection.Correlation.pas"/>
+        <DCCReference Include="Signal.Peaks.pas"/>
+        <DCCReference Include="Signal.Statistics.pas"/>
+        <DCCReference Include="Detection.Templates.pas"/>
+        <DCCReference Include="IO.AudioSource.pas"/>
+        <DCCReference Include="Detection.Classifier.pas"/>
+        <DCCReference Include="Detection.Detector.pas"/>
+        <DCCReference Include="GUI.Model.pas"/>
+        <DCCReference Include="GUI.Plot.pas"/>
+        <DCCReference Include="IO.PeakStore.pas"/>
+        <DCCReference Include="IO.SignalCache.pas"/>
+        <DCCReference Include="Threads.Analysis.pas"/>
+        <DCCReference Include="Threads.WavOpen.pas"/>
+        <DCCReference Include="Core.ConfigStore.pas"/>
+        <DCCReference Include="GUI.SettingsForm.pas"/>
         <None Include="TODO.md"/>
+        <None Include="AGENTS.md"/>
+        <None Include="HISTORY.md"/>
+        <None Include="README.md"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>
@@ -288,6 +291,12 @@
                         <Overwrite>true</Overwrite>
                     </Platform>
                 </DeployFile>
+                <DeployFile LocalName="AGENTS.md" Configuration="Debug" Class="ProjectFile">
+                    <Platform Name="Win32">
+                        <RemoteDir>.\</RemoteDir>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
                 <DeployFile LocalName="Bin\ReadEOD.exe" Configuration="Debug" Class="ProjectOutput">
                     <Platform Name="Win32">
                         <RemoteName>ReadEOD.exe</RemoteName>
@@ -297,6 +306,18 @@
                 <DeployFile LocalName="Bin\ReadEOD.exe" Configuration="Release" Class="ProjectOutput">
                     <Platform Name="Win32">
                         <RemoteName>ReadEOD.exe</RemoteName>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="HISTORY.md" Configuration="Debug" Class="ProjectFile">
+                    <Platform Name="Win32">
+                        <RemoteDir>.\</RemoteDir>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="README.md" Configuration="Debug" Class="ProjectFile">
+                    <Platform Name="Win32">
+                        <RemoteDir>.\</RemoteDir>
                         <Overwrite>true</Overwrite>
                     </Platform>
                 </DeployFile>

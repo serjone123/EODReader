@@ -1,10 +1,10 @@
-unit Eod.AnalysisThread;
+unit Threads.Analysis;
 
 interface
 
 uses
   System.Classes, System.SysUtils, System.SyncObjs,
-  Eod.Types, Eod.Detector;
+  Core.Types, Detection.Detector;
 
 type
   TAnalysisProgressEvent = procedure(Sender: TObject; Processed, Total: Int64) of object;

@@ -1,9 +1,9 @@
-unit Eod.Classifier;
+unit Detection.Classifier;
 
 interface
 
 uses
-  Eod.Types, Eod.Correlation;
+  Core.Types, Detection.Correlation;
 
 type
   TEodClassifier = class
@@ -19,7 +19,7 @@ type
 implementation
 
 uses
-  Eod.Templates;
+  Detection.Templates;
 
 constructor TEodClassifier.Create;
 begin

@@ -1,12 +1,12 @@
-unit Eod.ConfigStore;
+unit Core.ConfigStore;
 
-{ Persists TEodDetectorConfig (Eod.Types) to/from a small JSON file, so
+{ Persists TEodDetectorConfig (Core.Types) to/from a small JSON file, so
   detector settings survive an application restart. }
 
 interface
 
 uses
-  Eod.Types;
+  Core.Types;
 
 function GetDefaultConfigFileName: string;
 

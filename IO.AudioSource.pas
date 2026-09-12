@@ -1,9 +1,9 @@
-unit Eod.AudioSource;
+unit IO.AudioSource;
 
 interface
 
 uses
-  System.SysUtils, Eod.Types, Eod.WavReader;
+  System.SysUtils, Core.Types, IO.WavReader;
 
 type
   TFourChannelAudioSource = class
