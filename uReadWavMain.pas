@@ -288,8 +288,8 @@ begin
     FOpenThread.Cancel;
   if Assigned(FOverviewThread) then
     FOverviewThread.Cancel;
-  if Assigned(FOverviewThread) then
-    FOverviewThread.Cancel;
+  if Assigned(FPeakOverviewThread) then
+    FPeakOverviewThread.Cancel;
 
   FOverview.Free;
   FOverview := nil;
@@ -319,7 +319,7 @@ begin
     if Assigned(FOverviewThread) then
       FOverviewThread.Cancel;
     if Assigned(FPeakOverviewThread) then
-      FOverviewThread.Cancel;
+      FPeakOverviewThread.Cancel;
     CanClose := False;
     UpdateStatus('Stopping background operation...');
     Exit;
@@ -2340,7 +2340,26 @@ begin
     FOverviewChMax[I] := ChannelMax[I];
   end;
 
-  FOverviewChannelColors := True;
+  if (TotalFrames > 0) and (Length(FOverviewMin) > 0) then
+    begin
+      FOverview.SetData(
+        FOverviewMin,
+        FOverviewMax,
+        0,
+        TotalFrames - 1);
+
+      FOverview.SetChannelData(
+        FOverviewChMin,
+        FOverviewChMax,
+        0,
+        TotalFrames - 1);
+
+      FOverview.SetViewRange(
+        0,
+        Min(TotalFrames - 1, FPlot.ViewSampleCount));
+    end;
+
+
   FOverview.ChannelColors := FOverviewChannelColors;
 
   if (TotalFrames > 0) and (Length(FOverviewMin) > 0) then
