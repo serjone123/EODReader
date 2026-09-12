@@ -21,7 +21,9 @@ uses
   Threads.Analysis in 'Threads.Analysis.pas',
   Threads.WavOpen in 'Threads.WavOpen.pas',
   Core.ConfigStore in 'Core.ConfigStore.pas',
-  GUI.SettingsForm in 'GUI.SettingsForm.pas';
+  GUI.SettingsForm in 'GUI.SettingsForm.pas',
+  Threads.Overview in 'Threads.Overview.pas',
+  Threads.PeakOverview in 'Threads.PeakOverview.pas';
 
 {$R *.res}
 

@@ -16,6 +16,8 @@ uses
 , Threads.WavOpen
 , Core.ConfigStore, GUI.SettingsForm
 , GUI.FileNaming
+, Threads.Overview
+, Threads.PeakOverview
  ;
 
 type
@@ -79,6 +81,9 @@ type
     FOpenThread: TEodWavOpenThread;
     FClosing: Boolean;
 
+    FOverviewThread: TEodOverviewThread;
+    FPeakOverviewThread: TEodPeakOverviewThread;
+
     FOverview: TOverviewPlot;
 
     FOverviewMin: TFloatArray;
@@ -120,6 +125,24 @@ type
     procedure OverviewRangeSelected(Sender: TObject; AStart, AEnd: Int64);
 
     procedure BuildOverview;
+
+    procedure StartOverview;
+    procedure OverviewProgress(Sender: TObject; Processed, Total: Int64);
+    procedure OverviewFinished(Sender: TObject;
+      const OverviewMin, OverviewMax: TFloatArray;
+      const ChannelMin, ChannelMax: TChannelEnvelopes;
+      TotalFrames: Int64; Canceled: Boolean;
+      const ErrorText: string);
+    procedure OverviewThreadTerminated(Sender: TObject);
+
+    procedure PeakOverviewProgress(Sender: TObject; Processed, Total: Int64);
+    procedure PeakOverviewFinished(Sender: TObject;
+      const OverviewMin, OverviewMax: TFloatArray;
+      const ChannelMin, ChannelMax: TChannelEnvelopes;
+      TotalFrames: Int64; Canceled: Boolean;
+      const ErrorText: string);
+    procedure PeakOverviewThreadTerminated(Sender: TObject);
+    procedure StartPeakOverview(const AFileName: string);
 
     procedure UpdateOverviewView(ViewStart, ViewEnd: Int64);
 
@@ -187,6 +210,9 @@ begin
   FAnalysis := nil;
   FOpenThread := nil;
   FClosing := False;
+
+  FOverviewThread := nil;
+  FPeakOverviewThread := nil;
 
   FModeBox.Items.Clear;
   FModeBox.Items.Add('RAW - 4 channels');
@@ -260,6 +286,10 @@ begin
     FAnalysis.Cancel;
   if Assigned(FOpenThread) then
     FOpenThread.Cancel;
+  if Assigned(FOverviewThread) then
+    FOverviewThread.Cancel;
+  if Assigned(FOverviewThread) then
+    FOverviewThread.Cancel;
 
   FOverview.Free;
   FOverview := nil;
@@ -269,6 +299,33 @@ begin
 
   FDetector.Free;
   FSession.Free;
+end;
+
+procedure TMainForm.FormCloseQuery(Sender: TObject; var CanClose: Boolean);
+begin
+  { Плеер живёт только в главном потоке — его достаточно просто остановить. }
+  StopPlayback(False);
+
+  if Assigned(FAnalysis) or
+     Assigned(FOpenThread) or
+     Assigned(FOverviewThread) or
+     Assigned(FPeakOverviewThread) then
+  begin
+    FClosing := True;
+    if Assigned(FAnalysis) then
+      FAnalysis.Cancel;
+    if Assigned(FOpenThread) then
+      FOpenThread.Cancel;
+    if Assigned(FOverviewThread) then
+      FOverviewThread.Cancel;
+    if Assigned(FPeakOverviewThread) then
+      FOverviewThread.Cancel;
+    CanClose := False;
+    UpdateStatus('Stopping background operation...');
+    Exit;
+  end;
+
+  CanClose := True;
 end;
 
 procedure TMainForm.AnalysisFinished(Sender: TObject; const Peaks: TPeakArray;
@@ -344,7 +401,7 @@ begin
     { Анализ/открытие WAV ломает текущую сессию — плей останавливаем. }
     StopPlayback(False);
 
-  FOpenWavButton.Enabled := not Analyzing and not Assigned(FOpenThread);
+  FOpenWavButton.Enabled := not Analyzing;
   FOpenPeakButton.Enabled := not Analyzing;
   FSaveButton.Enabled := not Analyzing and (FSession.PeakCount > 0);
   FPrevButton.Enabled := not Analyzing;
@@ -408,7 +465,8 @@ begin
     FPlot.SetFullRange(0, FSession.TotalFrames - 1);
   end;
 
-  BuildOverview;
+  //BuildOverview;
+  StartOverview;
   OldSession.Free;
 
   FSession.SetPeaks(nil);
@@ -462,23 +520,45 @@ end;
 procedure TMainForm.UpdateCaption;
 var
   NameText: string;
+  InfoText: string;
 begin
-  if assigned (FSession) then
+  NameText := '';
+  InfoText := '';
 
+  if Assigned(FSession) then
     case FSession.Mode of
       dmWav:
-        if FSession.File1 <> '' then
-          NameText := ExtractFileName(FSession.File1) + ' + ' +
-            ExtractFileName(FSession.File2);
+        begin
+          if FSession.File1 <> '' then
+            NameText := ExtractFileName(FSession.File1) + ' + ' +
+              ExtractFileName(FSession.File2);
+
+          if (FSession.SampleRate > 0) and (FSession.TotalFrames > 0) then
+            InfoText := Format('%.3f s | %d Hz | %d frames',
+              [FSession.TotalFrames / FSession.SampleRate,
+               FSession.SampleRate,
+               FSession.TotalFrames]);
+        end;
+
       dmPeakFile:
-        if FSession.PeakFile <> '' then
-          NameText := ExtractFileName(FSession.PeakFile);
+        begin
+          if FSession.PeakFile <> '' then
+            NameText := ExtractFileName(FSession.PeakFile);
+
+          if (FSession.SampleRate > 0) and (FSession.TotalFrames > 0) then
+            InfoText := Format('%d Hz | %d frames | %d peaks',
+              [FSession.SampleRate,
+               FSession.TotalFrames,
+               FSession.PeakCount]);
+        end;
     end;
 
   if NameText = '' then
     Caption := 'EOD Viewer'
+  else if InfoText = '' then
+    Caption := 'EOD Viewer - ' + NameText
   else
-    Caption := 'EOD Viewer - ' + NameText;
+    Caption := 'EOD Viewer - ' + NameText + ' | ' + InfoText;
 
   FOpenFolderButton.Enabled := NameText <> '';
 end;
@@ -1205,7 +1285,8 @@ begin
       FPlot.SetFullRange(0, FSession.TotalFrames - 1);
     end;
 
-    BuildOverview;
+    //BuildOverview;
+    StartPeakOverview(D.FileName);
 
     FCurrentPeak := -1;
 
@@ -1308,26 +1389,6 @@ begin
   FOpenPeakButton.Enabled := False;
   FSaveButton.Enabled := False;
   UpdateStatus('Opening WAV in background...');
-end;
-
-procedure TMainForm.FormCloseQuery(Sender: TObject; var CanClose: Boolean);
-begin
-  { Плеер живёт только в главном потоке — его достаточно просто остановить. }
-  StopPlayback(False);
-
-  if Assigned(FAnalysis) or Assigned(FOpenThread) then
-  begin
-    FClosing := True;
-    if Assigned(FAnalysis) then
-      FAnalysis.Cancel;
-    if Assigned(FOpenThread) then
-      FOpenThread.Cancel;
-    CanClose := False;
-    UpdateStatus('Stopping background operation...');
-    Exit;
-  end;
-
-  CanClose := True;
 end;
 
 // procedure TMainForm.FPeakListClick(Sender: TObject);
@@ -2110,6 +2171,214 @@ begin
   finally
     Dlg.Free;
   end;
+end;
+
+procedure TMainForm.StartOverview;
+begin
+  if FClosing or (FSession.Mode <> dmWav) then
+    Exit;
+
+  if Assigned(FOverviewThread) then
+    FOverviewThread.Cancel;
+
+  FOverview.Clear;
+
+  FOverviewThread := TEodOverviewThread.Create(
+    FSession.File1,
+    FSession.File2);
+
+  FOverviewThread.OnProgress := OverviewProgress;
+  FOverviewThread.OnFinished := OverviewFinished;
+  FOverviewThread.OnTerminate := OverviewThreadTerminated;
+  FOverviewThread.Start;
+
+  UpdateStatus('Building overview in background...');
+end;
+
+procedure TMainForm.OverviewProgress(Sender: TObject;
+  Processed, Total: Int64);
+var
+  Percent: Integer;
+begin
+  if FClosing then
+    Exit;
+
+  if Total > 0 then
+    Percent := Round(Processed * 100.0 / Total)
+  else
+    Percent := 0;
+
+  if Percent < 0 then
+    Percent := 0
+  else if Percent > 100 then
+    Percent := 100;
+
+  UpdateStatus(Format('Building overview: %d%%', [Percent]));
+end;
+
+procedure TMainForm.OverviewFinished(Sender: TObject;
+  const OverviewMin, OverviewMax: TFloatArray;
+  const ChannelMin, ChannelMax: TChannelEnvelopes;
+  TotalFrames: Int64; Canceled: Boolean;
+  const ErrorText: string);
+begin
+  if FClosing then
+    Exit;
+
+  if Canceled then
+  begin
+    UpdateStatus('Overview building cancelled.');
+    Exit;
+  end;
+
+  if ErrorText <> '' then
+  begin
+    UpdateStatus('Overview error: ' + ErrorText);
+    Exit;
+  end;
+
+  FOverviewMin := Copy(OverviewMin);
+  FOverviewMax := Copy(OverviewMax);
+  FOverviewChMin := ChannelMin;
+  FOverviewChMax := ChannelMax;
+
+  FOverview.SetData(
+    FOverviewMin,
+    FOverviewMax,
+    0,
+    TotalFrames - 1);
+
+  FOverview.SetChannelData(
+    FOverviewChMin,
+    FOverviewChMax,
+    0,
+    TotalFrames - 1);
+
+  FOverview.SetViewRange(
+    0,
+    Min(TotalFrames - 1, FPlot.ViewSampleCount));
+
+  UpdateStatus(Format(
+    'WAV: %.3f sec, %d Hz, %d frames',
+    [FSession.TotalFrames / FSession.SampleRate,
+     FSession.SampleRate,
+     FSession.TotalFrames]));
+end;
+
+procedure TMainForm.OverviewThreadTerminated(Sender: TObject);
+begin
+  if FOverviewThread = Sender then
+    FOverviewThread := nil;
+
+  if FClosing then
+    Close;
+end;
+
+procedure TMainForm.StartPeakOverview(const AFileName: string);
+var
+  Ch: Integer;
+begin
+  if FClosing then
+    Exit;
+
+  if Assigned(FOverviewThread) then
+  begin
+    FOverviewThread.Cancel;
+    Exit;
+  end;
+
+  if AFileName = '' then
+    Exit;
+
+  FOverviewMin := nil;
+  FOverviewMax := nil;
+
+  for Ch := 0 to 3 do
+  begin
+    FOverviewChMin[Ch] := nil;
+    FOverviewChMax[Ch] := nil;
+  end;
+
+  UpdateStatus('Building EODPK overview...');
+
+  FPeakOverviewThread := TEodPeakOverviewThread.Create(AFileName, 2000);
+  FPeakOverviewThread.OnProgress := PeakOverviewProgress;
+  FPeakOverviewThread.OnFinished := PeakOverviewFinished;
+  FPeakOverviewThread.OnTerminate := PeakOverviewThreadTerminated;
+  FPeakOverviewThread.Start;
+end;
+
+procedure TMainForm.PeakOverviewFinished(Sender: TObject;
+  const OverviewMin, OverviewMax: TFloatArray;
+  const ChannelMin, ChannelMax: TChannelEnvelopes;
+  TotalFrames: Int64; Canceled: Boolean;
+  const ErrorText: string);
+var
+  I: Integer;
+begin
+  if FClosing then
+    Exit;
+
+  if Canceled then
+  begin
+    UpdateStatus('EODPK overview cancelled.');
+    Exit;
+  end;
+
+  if ErrorText <> '' then
+  begin
+    UpdateStatus('EODPK overview error: ' + ErrorText);
+    Exit;
+  end;
+
+  FOverviewMin := OverviewMin;
+  FOverviewMax := OverviewMax;
+
+  for I := 0 to 3 do
+  begin
+    FOverviewChMin[I] := ChannelMin[I];
+    FOverviewChMax[I] := ChannelMax[I];
+  end;
+
+  FOverviewChannelColors := True;
+  FOverview.ChannelColors := FOverviewChannelColors;
+
+  if (TotalFrames > 0) and (Length(FOverviewMin) > 0) then
+    UpdateOverviewView(0, TotalFrames - 1);
+
+  UpdateStatus(Format('EODPK overview ready: %d frames',
+    [TotalFrames]));
+end;
+
+
+procedure TMainForm.PeakOverviewProgress(Sender: TObject; Processed,
+  Total: Int64);
+var
+  Percent: Integer;
+begin
+  if FClosing then
+    Exit;
+
+  if Total > 0 then
+    Percent := Round(Processed * 100.0 / Total)
+  else
+    Percent := 0;
+
+  if Percent < 0 then
+    Percent := 0
+  else if Percent > 100 then
+    Percent := 100;
+
+  UpdateStatus(Format('Building overview: %d%%', [Percent]));
+end;
+
+procedure TMainForm.PeakOverviewThreadTerminated(Sender: TObject);
+begin
+  if FPeakOverviewThread = Sender then
+    FPeakOverviewThread := nil;
+
+  if FClosing then
+    Close;
 end;
 
 end.

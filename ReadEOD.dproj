@@ -245,6 +245,8 @@
         <DCCReference Include="Threads.WavOpen.pas"/>
         <DCCReference Include="Core.ConfigStore.pas"/>
         <DCCReference Include="GUI.SettingsForm.pas"/>
+        <DCCReference Include="Threads.Overview.pas"/>
+        <DCCReference Include="Threads.PeakOverview.pas"/>
         <None Include="TODO.md"/>
         <None Include="AGENTS.md"/>
         <None Include="HISTORY.md"/>
