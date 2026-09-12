@@ -100,20 +100,12 @@ var
   Store: TEodPeakStore;
   TotalFrames: Int64;
   PeakCount: Int64;
-  FirstIdx, LastIdx: Int64;
-  L, R, M: Int64;
-  P: TPeak;
-  StartFrame: Int64;
   Envelope: TWaveEnvelope;
   N, I, Ch: Integer;
   VMin, VMax: Single;
   ChMin, ChMax: array[0..3] of Single;
-  ChInit: Boolean;
-  PercentStep: Int64;
-  NextProgress: Int64;
   SourceIndex: Integer;
   BinStart, BinEnd, BinCount: Integer;
-  EStart, EEnd: Int64;
 begin
   Store := nil;
   FCanceled := False;
@@ -143,15 +135,7 @@ begin
     if (TotalFrames <= 0) or (PeakCount <= 0) then
       Exit;
 
-    { Find the complete peak range once. The cache reader then supplies a
-      compact envelope instead of walking every waveform sample. }
-    FirstIdx := 0;
-    LastIdx := PeakCount - 1;
-
-    { ReadEnvelope may return more points than requested only when the
-      selected cache level cannot represent a narrower range. Limit the
-      result after reading. }
-    if not Store.ReadEnvelope(FirstIdx, LastIdx, MaxDisplayPoints,
+    if not Store.ReadEnvelope(0, PeakCount - 1, MaxDisplayPoints,
       Envelope) then
       Exit;
 
@@ -165,107 +149,71 @@ begin
     if N <= 0 then
       Exit;
 
-    if N > FPoints then
-    begin
-      { Downsample the already compact envelope to the GUI point count. }
+    BinCount := N;
+    if BinCount > FPoints then
       BinCount := FPoints;
-      SetLength(FOverviewMin, BinCount);
-      SetLength(FOverviewMax, BinCount);
-      for Ch := 0 to 3 do
-      begin
-        SetLength(FChannelMin[Ch], BinCount);
-        SetLength(FChannelMax[Ch], BinCount);
-      end;
 
-      for I := 0 to BinCount - 1 do
-      begin
-        BinStart := (I * N) div BinCount;
-        BinEnd := ((I + 1) * N) div BinCount - 1;
-        if BinEnd < BinStart then
-          BinEnd := BinStart;
-
-        VMin := MaxSingle;
-        VMax := -MaxSingle;
-        ChInit := False;
-        for Ch := 0 to 3 do
-        begin
-          ChMin[Ch] := MaxSingle;
-          ChMax[Ch] := -MaxSingle;
-        end;
-
-        for SourceIndex := BinStart to BinEnd do
-        begin
-          if CancelRequested then
-          begin
-            FCanceled := True;
-            Exit;
-          end;
-
-          VMin := Min(VMin, Envelope[SourceIndex].Ch1Min);
-          VMin := Min(VMin, Envelope[SourceIndex].Ch2Min);
-          VMin := Min(VMin, Envelope[SourceIndex].Ch3Min);
-          VMin := Min(VMin, Envelope[SourceIndex].Ch4Min);
-
-          VMax := Max(VMax, Envelope[SourceIndex].Ch1Max);
-          VMax := Max(VMax, Envelope[SourceIndex].Ch2Max);
-          VMax := Max(VMax, Envelope[SourceIndex].Ch3Max);
-          VMax := Max(VMax, Envelope[SourceIndex].Ch4Max);
-
-          ChMin[0] := Min(ChMin[0], Envelope[SourceIndex].Ch1Min);
-          ChMax[0] := Max(ChMax[0], Envelope[SourceIndex].Ch1Max);
-          ChMin[1] := Min(ChMin[1], Envelope[SourceIndex].Ch2Min);
-          ChMax[1] := Max(ChMax[1], Envelope[SourceIndex].Ch2Max);
-          ChMin[2] := Min(ChMin[2], Envelope[SourceIndex].Ch3Min);
-          ChMax[2] := Max(ChMax[2], Envelope[SourceIndex].Ch3Max);
-          ChMin[3] := Min(ChMin[3], Envelope[SourceIndex].Ch4Min);
-          ChMax[3] := Max(ChMax[3], Envelope[SourceIndex].Ch4Max);
-          ChInit := True;
-        end;
-
-        FOverviewMin[I] := VMin;
-        FOverviewMax[I] := VMax;
-        for Ch := 0 to 3 do
-        begin
-          FChannelMin[Ch][I] := ChMin[Ch];
-          FChannelMax[Ch][I] := ChMax[Ch];
-        end;
-      end;
-    end
-    else
+    SetLength(FOverviewMin, BinCount);
+    SetLength(FOverviewMax, BinCount);
+    for Ch := 0 to 3 do
     begin
-      SetLength(FOverviewMin, N);
-      SetLength(FOverviewMax, N);
+      SetLength(FChannelMin[Ch], BinCount);
+      SetLength(FChannelMax[Ch], BinCount);
+    end;
+
+    for I := 0 to BinCount - 1 do
+    begin
+      BinStart := (I * N) div BinCount;
+      BinEnd := ((I + 1) * N) div BinCount - 1;
+      if BinEnd < BinStart then
+        BinEnd := BinStart;
+
+      VMin := MaxSingle;
+      VMax := -MaxSingle;
       for Ch := 0 to 3 do
       begin
-        SetLength(FChannelMin[Ch], N);
-        SetLength(FChannelMax[Ch], N);
+        ChMin[Ch] := MaxSingle;
+        ChMax[Ch] := -MaxSingle;
       end;
 
-      for I := 0 to N - 1 do
+      for SourceIndex := BinStart to BinEnd do
       begin
-        FOverviewMin[I] := Min(
-          Min(Envelope[I].Ch1Min, Envelope[I].Ch2Min),
-          Min(Envelope[I].Ch3Min, Envelope[I].Ch4Min));
-        FOverviewMax[I] := Max(
-          Max(Envelope[I].Ch1Max, Envelope[I].Ch2Max),
-          Max(Envelope[I].Ch3Max, Envelope[I].Ch4Max));
+        if CancelRequested then
+        begin
+          FCanceled := True;
+          Exit;
+        end;
 
-        FChannelMin[0][I] := Envelope[I].Ch1Min;
-        FChannelMax[0][I] := Envelope[I].Ch1Max;
-        FChannelMin[1][I] := Envelope[I].Ch2Min;
-        FChannelMax[1][I] := Envelope[I].Ch2Max;
-        FChannelMin[2][I] := Envelope[I].Ch3Min;
-        FChannelMax[2][I] := Envelope[I].Ch3Max;
-        FChannelMin[3][I] := Envelope[I].Ch4Min;
-        FChannelMax[3][I] := Envelope[I].Ch4Max;
+        VMin := Min(VMin, Envelope[SourceIndex].Ch1Min);
+        VMin := Min(VMin, Envelope[SourceIndex].Ch2Min);
+        VMin := Min(VMin, Envelope[SourceIndex].Ch3Min);
+        VMin := Min(VMin, Envelope[SourceIndex].Ch4Min);
+
+        VMax := Max(VMax, Envelope[SourceIndex].Ch1Max);
+        VMax := Max(VMax, Envelope[SourceIndex].Ch2Max);
+        VMax := Max(VMax, Envelope[SourceIndex].Ch3Max);
+        VMax := Max(VMax, Envelope[SourceIndex].Ch4Max);
+
+        ChMin[0] := Min(ChMin[0], Envelope[SourceIndex].Ch1Min);
+        ChMax[0] := Max(ChMax[0], Envelope[SourceIndex].Ch1Max);
+        ChMin[1] := Min(ChMin[1], Envelope[SourceIndex].Ch2Min);
+        ChMax[1] := Max(ChMax[1], Envelope[SourceIndex].Ch2Max);
+        ChMin[2] := Min(ChMin[2], Envelope[SourceIndex].Ch3Min);
+        ChMax[2] := Max(ChMax[2], Envelope[SourceIndex].Ch3Max);
+        ChMin[3] := Min(ChMin[3], Envelope[SourceIndex].Ch4Min);
+        ChMax[3] := Max(ChMax[3], Envelope[SourceIndex].Ch4Max);
+      end;
+
+      FOverviewMin[I] := VMin;
+      FOverviewMax[I] := VMax;
+      for Ch := 0 to 3 do
+      begin
+        FChannelMin[Ch][I] := ChMin[Ch];
+        FChannelMax[Ch][I] := ChMax[Ch];
       end;
     end;
 
     FProcessed := TotalFrames;
-    PercentStep := TotalFrames div 100;
-    if PercentStep < 1 then
-      PercentStep := 1;
-    NextProgress := PercentStep;
     TThread.Synchronize(Self, DoProgress);
   except
     on E: Exception do
