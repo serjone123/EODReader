@@ -27,6 +27,7 @@ type
   TWaveEnvelope = array of TWaveEnvelopePoint;
 
   TFloatArray = array of Single;
+  TChannelEnvelopes = array[0..3] of TFloatArray;
 
   TAudioFrame = packed record
     Ch1: Single;
