@@ -24,12 +24,30 @@ type
   TOverviewRangeSelectedEvent = procedure(Sender: TObject;
     AStart, AEnd: Int64) of object;
 
+const
+  { Цвета каналов 1..4 — те же, что использует основной график. }
+  EodChannelColors: array[0..3] of TAlphaColor = (
+    TAlphaColorRec.Red,
+    TAlphaColorRec.Green,
+    TAlphaColorRec.Blue,
+    TAlphaColorRec.Orange);
+
+type
+  { Поканальные min/max огибающие; индекс 0..3 — канал 1..4. }
+  TChannelEnvelopes = array[0..3] of TFloatArray;
+
   TOverviewPlot = class
   private
     FPaintBox: TPaintBox;
 
     FMinValues: TFloatArray;
     FMaxValues: TFloatArray;
+
+    { Поканальные огибающие для режима "обзор в цветах каналов".
+      Пустой массив = данных по каналу нет, канал не рисуется. }
+    FChannelMin: TChannelEnvelopes;
+    FChannelMax: TChannelEnvelopes;
+    FShowChannelColors: Boolean;
 
     FFullStart: Int64;
     FFullEnd: Int64;
@@ -61,6 +79,10 @@ type
     function XToFrame(X: Single; const R: TRectF): Int64;
     function GetPlotRect: TRectF;
 
+    procedure SetShowChannelColors(AValue: Boolean);
+    function GetHasChannelData: Boolean;
+    procedure DrawChannelEnvelopes(Canvas: TCanvas; const R: TRectF);
+
   public
     constructor Create(APaintBox: TPaintBox);
     destructor Destroy; override;
@@ -71,7 +93,21 @@ type
       const AMinValues, AMaxValues: TFloatArray;
       AFullStart, AFullEnd: Int64);
 
+    { Поканальные огибающие 4 каналов. Хранятся отдельно от общей
+      огибающей из SetData, поэтому переключение ChannelColors не
+      требует повторной подготовки данных. }
+    procedure SetChannelData(
+      const AMinValues, AMaxValues: TChannelEnvelopes;
+      AFullStart, AFullEnd: Int64);
+
     procedure SetViewRange(AStart, AEnd: Int64);
+
+    { Рисовать обзор поканально, в EodChannelColors. Если поканальных
+      данных нет (HasChannelData = False), рисуется обычная огибающая. }
+    property ChannelColors: Boolean
+      read FShowChannelColors write SetShowChannelColors;
+
+    property HasChannelData: Boolean read GetHasChannelData;
 
     property OnClick: TOverviewClickEvent read FOnClick write FOnClick;
     property OnRangeSelected: TOverviewRangeSelectedEvent
@@ -2313,9 +2349,17 @@ begin
 end;
 
 procedure TOverviewPlot.Clear;
+var
+  Ch: Integer;
 begin
   SetLength(FMinValues, 0);
   SetLength(FMaxValues, 0);
+
+  for Ch := 0 to 3 do
+  begin
+    SetLength(FChannelMin[Ch], 0);
+    SetLength(FChannelMax[Ch], 0);
+  end;
 
   FFullStart := 0;
   FFullEnd := 0;
@@ -2344,6 +2388,54 @@ begin
 
   if Assigned(FPaintBox) then
     FPaintBox.Repaint;
+end;
+
+procedure TOverviewPlot.SetChannelData(
+  const AMinValues, AMaxValues: TChannelEnvelopes;
+  AFullStart, AFullEnd: Int64);
+var
+  Ch: Integer;
+begin
+  for Ch := 0 to 3 do
+  begin
+    FChannelMin[Ch] := Copy(AMinValues[Ch]);
+    FChannelMax[Ch] := Copy(AMaxValues[Ch]);
+  end;
+
+  FFullStart := AFullStart;
+  FFullEnd := AFullEnd;
+
+  if FFullEnd < FFullStart then
+  begin
+    FFullStart := 0;
+    FFullEnd := 0;
+  end;
+
+  if Assigned(FPaintBox) then
+    FPaintBox.Repaint;
+end;
+
+procedure TOverviewPlot.SetShowChannelColors(AValue: Boolean);
+begin
+  if FShowChannelColors = AValue then
+    Exit;
+
+  FShowChannelColors := AValue;
+
+  if Assigned(FPaintBox) then
+    FPaintBox.Repaint;
+end;
+
+function TOverviewPlot.GetHasChannelData: Boolean;
+var
+  Ch: Integer;
+begin
+  for Ch := 0 to 3 do
+    if (Length(FChannelMin[Ch]) > 0) and
+       (Length(FChannelMax[Ch]) > 0) then
+      Exit(True);
+
+  Result := False;
 end;
 
 procedure TOverviewPlot.SetViewRange(
@@ -2497,43 +2589,48 @@ Canvas.FillRect(RectF(0, 0, FPaintBox.Width, FPaintBox.Height), 0, 0, [], 1);
   end;
 
   { Signal envelope }
-  Canvas.Stroke.Kind := TBrushKind.Solid;
-  Canvas.Stroke.Color := TAlphaColorRec.Gray;
-  Canvas.Stroke.Thickness := 1;
-
-  if N = 1 then
-  begin
-    X := R.CenterPoint.X;
-
-    Canvas.DrawLine(
-      PointF(X, MapY(FMinValues[0], YMin, YMax, R)),
-      PointF(X, MapY(FMaxValues[0], YMin, YMax, R)),
-      1);
-  end
+  if FShowChannelColors and GetHasChannelData then
+    DrawChannelEnvelopes(Canvas, R)
   else
   begin
-    for I := 0 to N - 1 do
+    Canvas.Stroke.Kind := TBrushKind.Solid;
+    Canvas.Stroke.Color := TAlphaColorRec.Gray;
+    Canvas.Stroke.Thickness := 1;
+
+    if N = 1 then
     begin
-      X :=
-        R.Left +
-        I / (N - 1) * R.Width;
-
-      Y1 := MapY(
-        FMinValues[I],
-        YMin,
-        YMax,
-        R);
-
-      Y2 := MapY(
-        FMaxValues[I],
-        YMin,
-        YMax,
-        R);
+      X := R.CenterPoint.X;
 
       Canvas.DrawLine(
-        PointF(X, Y1),
-        PointF(X, Y2),
+        PointF(X, MapY(FMinValues[0], YMin, YMax, R)),
+        PointF(X, MapY(FMaxValues[0], YMin, YMax, R)),
         1);
+    end
+    else
+    begin
+      for I := 0 to N - 1 do
+      begin
+        X :=
+          R.Left +
+          I / (N - 1) * R.Width;
+
+        Y1 := MapY(
+          FMinValues[I],
+          YMin,
+          YMax,
+          R);
+
+        Y2 := MapY(
+          FMaxValues[I],
+          YMin,
+          YMax,
+          R);
+
+        Canvas.DrawLine(
+          PointF(X, Y1),
+          PointF(X, Y2),
+          1);
+      end;
     end;
   end;
 
@@ -2590,6 +2687,119 @@ Canvas.FillRect(RectF(0, 0, FPaintBox.Width, FPaintBox.Height), 0, 0, [], 1);
     Canvas.DrawRect(
       RectF(SelLeft, R.Top, SelRight, R.Bottom),
       0, 0, AllCorners, 1);
+  end;
+end;
+
+procedure TOverviewPlot.DrawChannelEnvelopes(
+  Canvas: TCanvas;
+  const R: TRectF);
+const
+  { Полупрозрачность: огибающие каналов перекрываются, и сквозь верхнюю
+    линию должны быть видны остальные. }
+  ChannelAlpha = $C0;
+var
+  Ch, I, N, Columns, Col: Integer;
+  I0, I1, Mid: Integer;
+  Scale, V: Double;
+  X, Y1, Y2: Single;
+  ColMin, ColMax: Single;
+begin
+  Columns := Max(1, Ceil(R.Width));
+
+  for Ch := 0 to 3 do
+  begin
+    N := Min(Length(FChannelMin[Ch]), Length(FChannelMax[Ch]));
+
+    if N <= 0 then
+      Continue;
+
+    { Масштаб свой для каждого канала: при общем масштабе слабый канал
+      выглядел бы на обзоре прямой линией. Диапазон симметричен нулю,
+      поэтому ноль у всех каналов на одной вертикали. }
+    Scale := 0;
+
+    for I := 0 to N - 1 do
+    begin
+      V := Abs(FChannelMin[Ch][I]);
+      if V > Scale then
+        Scale := V;
+
+      V := Abs(FChannelMax[Ch][I]);
+      if V > Scale then
+        Scale := V;
+    end;
+
+    if Scale <= 0 then
+      Continue;
+
+    Canvas.Stroke.Kind := TBrushKind.Solid;
+    Canvas.Stroke.Color :=
+      (EodChannelColors[Ch] and $00FFFFFF) or
+      (TAlphaColor(ChannelAlpha) shl 24);
+    Canvas.Stroke.Thickness := 1;
+
+    if N = 1 then
+    begin
+      X := R.CenterPoint.X;
+
+      Canvas.DrawLine(
+        PointF(X, MapY(FChannelMin[Ch][0], -Scale, Scale, R)),
+        PointF(X, MapY(FChannelMax[Ch][0], -Scale, Scale, R)),
+        1);
+
+      Continue;
+    end;
+
+    if N <= Columns then
+    begin
+      for I := 0 to N - 1 do
+      begin
+        X := R.Left + I / (N - 1) * R.Width;
+
+        Canvas.DrawLine(
+          PointF(X, MapY(FChannelMin[Ch][I], -Scale, Scale, R)),
+          PointF(X, MapY(FChannelMax[Ch][I], -Scale, Scale, R)),
+          1);
+      end;
+    end
+    else
+    begin
+      { Бинарных точек больше, чем пикселей по ширине: на колонку
+        объединяем несколько бинов, иначе линии рисуются друг поверх
+        друга и картинка становится ярче/шумнее без пользы. }
+      for Col := 0 to Columns - 1 do
+      begin
+        I0 := (Int64(Col) * (N - 1)) div Columns;
+        I1 := (Int64(Col + 1) * (N - 1)) div Columns;
+
+        if I1 < I0 then
+          I1 := I0;
+
+        if I1 > N - 1 then
+          I1 := N - 1;
+
+        ColMin := FChannelMin[Ch][I0];
+        ColMax := FChannelMax[Ch][I0];
+
+        for I := I0 + 1 to I1 do
+        begin
+          if FChannelMin[Ch][I] < ColMin then
+            ColMin := FChannelMin[Ch][I];
+
+          if FChannelMax[Ch][I] > ColMax then
+            ColMax := FChannelMax[Ch][I];
+        end;
+
+        Mid := (I0 + I1) div 2;
+
+        X := R.Left + Mid / (N - 1) * R.Width;
+
+        Y1 := MapY(ColMin, -Scale, Scale, R);
+        Y2 := MapY(ColMax, -Scale, Scale, R);
+
+        Canvas.DrawLine(PointF(X, Y1), PointF(X, Y2), 1);
+      end;
+    end;
   end;
 end;
 

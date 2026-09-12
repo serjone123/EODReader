@@ -83,6 +83,12 @@ type
     FOverviewMin: TFloatArray;
     FOverviewMax: TFloatArray;
 
+    { Поканальные огибающие обзорного графика (индекс 0..3 — канал 1..4)
+      для режима OverviewChannelColors. }
+    FOverviewChMin: TChannelEnvelopes;
+    FOverviewChMax: TChannelEnvelopes;
+    FOverviewChannelColors: Boolean;
+
     FPeakListFirstIndex: Integer;
 
     FPeakListRealCount: Integer;
@@ -116,6 +122,8 @@ type
 
     procedure UpdateOverviewView(ViewStart, ViewEnd: Int64);
 
+    procedure SetOverviewChannelColors(AValue: Boolean);
+
     procedure FillPeakListAroundFrame(AFrame: Int64);
     procedure UpdateStatus(const S: string);
     procedure UpdateCaption;
@@ -144,6 +152,11 @@ type
     procedure PlotViewChanged(Sender: TObject; ViewStart, ViewEnd: Int64);
     // function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; var Handled: Boolean): Boolean; override;
   public
+    { Обзорный график в цветах каналов 1..4 (как у основного графика).
+      Поканальные огибающие строит BuildOverview, поэтому переключение
+      не перечитывает файл. }
+    property OverviewChannelColors: Boolean
+      read FOverviewChannelColors write SetOverviewChannelColors;
   end;
 
 var
@@ -190,6 +203,7 @@ begin
   FOverview := TOverviewPlot.Create(OverviewPaintBox);
   FOverview.OnClick := OverviewClick;
   FOverview.OnRangeSelected := OverviewRangeSelected;
+  FOverview.ChannelColors := FOverviewChannelColors;
 
   { edRange is a derived/read-only indicator: End - Start.
     Wired in code (not the .dfm) so this doesn't depend on the form
@@ -231,6 +245,8 @@ begin
   FPlaySpeed := 1.0;
 
   FStatus.Text := '';
+
+  OverviewChannelColors :=true;
 end;
 
 procedure TMainForm.FormDestroy(Sender: TObject);
@@ -1501,6 +1517,15 @@ var
 
   P: TPeak;
 
+  { Поканальные min/max текущего бина. }
+  Ch: Integer;
+  ChInit: Boolean;
+  ChMin: array[0..3] of Single;
+  ChMax: array[0..3] of Single;
+
+  Envelope: TWaveEnvelope;
+  B, B0, B1: Integer;
+
   function FrameValue(const AFrame: TAudioFrame): Single;
   var
     A1, A2, A3, A4: Single;
@@ -1511,6 +1536,78 @@ var
     A4 := Abs(AFrame.Ch4);
 
     Result := Max(Max(A1, A2), Max(A3, A4));
+  end;
+
+  procedure ResetChannelBin;
+  var
+    C: Integer;
+  begin
+    ChInit := False;
+
+    for C := 0 to 3 do
+    begin
+      ChMin[C] := 0;
+      ChMax[C] := 0;
+    end;
+  end;
+
+  { Вызывается на каждый сэмпл всей записи, поэтому без циклов и вызовов
+    на канал — только сравнения. }
+  procedure AddChannelFrame(const AFrame: TAudioFrame);
+  begin
+    if ChInit then
+    begin
+      if AFrame.Ch1 < ChMin[0] then ChMin[0] := AFrame.Ch1;
+      if AFrame.Ch1 > ChMax[0] then ChMax[0] := AFrame.Ch1;
+
+      if AFrame.Ch2 < ChMin[1] then ChMin[1] := AFrame.Ch2;
+      if AFrame.Ch2 > ChMax[1] then ChMax[1] := AFrame.Ch2;
+
+      if AFrame.Ch3 < ChMin[2] then ChMin[2] := AFrame.Ch3;
+      if AFrame.Ch3 > ChMax[2] then ChMax[2] := AFrame.Ch3;
+
+      if AFrame.Ch4 < ChMin[3] then ChMin[3] := AFrame.Ch4;
+      if AFrame.Ch4 > ChMax[3] then ChMax[3] := AFrame.Ch4;
+    end
+    else
+    begin
+      ChMin[0] := AFrame.Ch1;
+      ChMax[0] := AFrame.Ch1;
+
+      ChMin[1] := AFrame.Ch2;
+      ChMax[1] := AFrame.Ch2;
+
+      ChMin[2] := AFrame.Ch3;
+      ChMax[2] := AFrame.Ch3;
+
+      ChMin[3] := AFrame.Ch4;
+      ChMax[3] := AFrame.Ch4;
+    end;
+
+    ChInit := True;
+  end;
+
+  function FrameToBin(AFrame: Int64): Integer;
+  begin
+    if TotalFrames <= 1 then
+      Result := 0
+    else
+      Result := EnsureRange(
+        Integer((AFrame * N) div TotalFrames), 0, N - 1);
+  end;
+
+  procedure UpdateChannelBin(ABin, AChannel: Integer;
+    AChMin, AChMax: Single);
+  begin
+    { Пустой бакет кэша: min/max остались в начальных значениях. }
+    if AChMin > AChMax then
+      Exit;
+
+    if AChMin < FOverviewChMin[AChannel][ABin] then
+      FOverviewChMin[AChannel][ABin] := AChMin;
+
+    if AChMax > FOverviewChMax[AChannel][ABin] then
+      FOverviewChMax[AChannel][ABin] := AChMax;
   end;
 
 begin
@@ -1548,6 +1645,18 @@ begin
     FOverviewMax[I] := 0;
   end;
 
+  for Ch := 0 to 3 do
+  begin
+    SetLength(FOverviewChMin[Ch], N);
+    SetLength(FOverviewChMax[Ch], N);
+
+    for I := 0 to N - 1 do
+    begin
+      FOverviewChMin[Ch][I] := 0;
+      FOverviewChMax[Ch][I] := 0;
+    end;
+  end;
+
   { --------------------------------------------------------------- }
   { WAV }
   { --------------------------------------------------------------- }
@@ -1565,6 +1674,8 @@ begin
 
       VMin := 0;
       VMax := 0;
+
+      ResetChannelBin;
 
       StartFrame := BinStart;
 
@@ -1596,6 +1707,8 @@ begin
             if V > VMax then
               VMax := V;
           end;
+
+          AddChannelFrame(Data[J]);
         end;
 
         StartFrame := EndFrame + 1;
@@ -1603,6 +1716,12 @@ begin
 
       FOverviewMin[I] := -VMax;
       FOverviewMax[I] := VMax;
+
+      for Ch := 0 to 3 do
+      begin
+        FOverviewChMin[Ch][I] := ChMin[Ch];
+        FOverviewChMax[Ch][I] := ChMax[Ch];
+      end;
     end;
   end
 
@@ -1632,9 +1751,35 @@ begin
       if -V < FOverviewMin[J] then
         FOverviewMin[J] := -V;
     end;
+
+    { Поканальные огибающие берём из кэша файла: он хранит min/max по
+      каждому каналу. Если кэша нет, массивы останутся нулевыми, и режим
+      "в цветах каналов" покажет обычную серую огибающую. }
+    if FSession.ReadPeakEnvelope(0, TotalFrames - 1, N, Envelope) then
+    begin
+      for I := 0 to High(Envelope) do
+      begin
+        if Envelope[I].EndPosition < Envelope[I].StartPosition then
+          Continue;
+
+        B0 := FrameToBin(Envelope[I].StartPosition);
+        B1 := FrameToBin(Envelope[I].EndPosition);
+
+        for B := B0 to B1 do
+        begin
+          UpdateChannelBin(B, 0, Envelope[I].Ch1Min, Envelope[I].Ch1Max);
+          UpdateChannelBin(B, 1, Envelope[I].Ch2Min, Envelope[I].Ch2Max);
+          UpdateChannelBin(B, 2, Envelope[I].Ch3Min, Envelope[I].Ch3Max);
+          UpdateChannelBin(B, 3, Envelope[I].Ch4Min, Envelope[I].Ch4Max);
+        end;
+      end;
+    end;
   end;
 
   FOverview.SetData(FOverviewMin, FOverviewMax, 0, TotalFrames - 1);
+
+  FOverview.SetChannelData(
+    FOverviewChMin, FOverviewChMax, 0, TotalFrames - 1);
 
   FOverview.SetViewRange(0, Min(TotalFrames - 1, FPlot.ViewSampleCount));
 end;
@@ -1648,6 +1793,14 @@ begin
     Exit;
 
   FOverview.SetViewRange(ViewStart, ViewEnd);
+end;
+
+procedure TMainForm.SetOverviewChannelColors(AValue: Boolean);
+begin
+  FOverviewChannelColors := AValue;
+
+  if Assigned(FOverview) then
+    FOverview.ChannelColors := AValue;
 end;
 
 procedure TMainForm.OverviewClick(Sender: TObject; Frame: Int64);
