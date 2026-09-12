@@ -60,6 +60,8 @@
 
 *.lng
 
+*.res
+
 # delphi hz files
 *.mes
 
