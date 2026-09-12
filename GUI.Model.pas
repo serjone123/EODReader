@@ -78,7 +78,7 @@ begin
   LastIdx := -1;
   if FStore = nil then Exit;
   if FStore.Header.PeakCount <= 0 then Exit;
-  SearchStart := Max<Int64>(0, StartFrame - WindowMargin);
+  SearchStart := Max(0, StartFrame - WindowMargin);
   SearchEnd := EndFrame + WindowMargin;
 
   L := 0;
@@ -192,8 +192,8 @@ begin
     if Pad then
     begin
       SetLength(Result, Count);
-      SourceStart := Max<Int64>(0, StartFrame);
-      SourceEnd := Min<Int64>(FSource.TotalFrames, StartFrame + Count);
+      SourceStart := Max(0, StartFrame);
+      SourceEnd := Min(FSource.TotalFrames, StartFrame + Count);
       if SourceEnd <= SourceStart then Exit;
       CopyCount := SourceEnd - SourceStart;
       DestOffset := SourceStart - StartFrame;
