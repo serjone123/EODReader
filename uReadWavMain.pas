@@ -46,9 +46,6 @@ type
     FSettingsButton: TButton;
     FPlayButton: TButton;
     FPlaySpeedBox: TComboBox;
-    PopupMenuImg: TPopupMenu;
-    miCopy: TMenuItem;
-    miSave: TMenuItem;
     MainMenu1: TMainMenu;
     btGeometry: TButton;
     procedure btGeometryClick(Sender: TObject);
@@ -74,10 +71,7 @@ type
     procedure edEndSampleChange(Sender: TObject);
     procedure FSettingsButtonClick(Sender: TObject);
     procedure FPlayButtonClick(Sender: TObject);
-    procedure PaintBoxMouseDown(Sender: TObject; Button: TMouseButton; Shift:
-        TShiftState; X, Y: Single);
     procedure PlaySpeedBoxChange(Sender: TObject);
-    procedure PopupMenuImgPopup(Sender: TObject);
   private
     FSession: TEodGuiSession;
     FDetector: TEodDetector;
@@ -185,7 +179,7 @@ type
     procedure UpdatePlotMode;
     procedure PlotViewChanged(Sender: TObject; ViewStart, ViewEnd: Int64);
     // function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; var Handled: Boolean): Boolean; override;
-    procedure CopyIMG(Sender: TObject);
+
     { Обзорный график в цветах каналов 1..4 (как у основного графика).
       Поканальные огибающие строит BuildOverview, поэтому переключение
       не перечитывает файл. }
@@ -2410,56 +2404,15 @@ begin
     Close;
 end;
 
-procedure TMainForm.CopyIMG(Sender: TObject);
-begin
-
-end;
 
 function AddMenuItem(PM: TPopupMenu; AText: string; AAction: TNotifyEvent):TMenuItem;
 begin
-  result := TMenuItem.Create(PM)  ;
-  result.Parent:= PM;
-  result.Text:=AText ;
-  result.OnClick:=AAction ;
+
 end;
 
 procedure TMainForm.btGeometryClick(Sender: TObject);
 begin
   ShowElectrodeLayoutForm
-end;
-
-procedure TMainForm.PaintBoxMouseDown(Sender: TObject; Button: TMouseButton;
-    Shift: TShiftState; X, Y: Single);
-begin
-if (Button = TMouseButton.mbRight)   then
-  begin
-
-
-//    fOnMenu(self.CamName);
-//    fOnMenu(self);
-//    miPool := TMenuItem.Create(FCamMenu)  ;
-//    miPool.Parent:= FCamMenu;
-//    miPool.Text:='str' ;
-    PopupMenuImg.Popup(Screen.MousePos.x, Screen.MousePos.y)
-  end;
-end;
-
-procedure TMainForm.PopupMenuImgPopup(Sender: TObject);
-var
-  miPool  : TMenuItem ;
-//  vCamView: ICamSub;
-begin
-
-
-  if Sender.ClassNameIs('TPaintBox') then
-    begin
-      for var I := 0 to PopupMenuImg.ItemsCount-1  do
-        begin
-          PopupMenuImg.Items[0].Free ;
-        end;
-
-      AddMenuItem(PopupMenuImg, 'Copy ', CopyIMG);
-    end;
 end;
 
 end.

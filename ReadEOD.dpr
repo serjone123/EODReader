@@ -26,7 +26,7 @@ uses
   Threads.PeakOverview in 'Threads.PeakOverview.pas',
   Electrode.LayoutForm in 'Electrode.LayoutForm.pas',
   Electrode.Layout in 'Electrode.Layout.pas',
-  Source.Localization in 'Source.Localization.pas',
+  Electrode.Localization in 'Electrode.Localization.pas',
   Electrode.Geometry in 'Electrode.Geometry.pas';
 
 {$R *.res}

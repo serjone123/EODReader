@@ -217,7 +217,6 @@ object MainForm: TMainForm
       Size.Width = 648.000000000000000000
       Size.Height = 350.000000000000000000
       Size.PlatformDefault = False
-      OnMouseDown = PaintBoxMouseDown
     end
     object LayNavi: TLayout
       Align = Top
@@ -318,17 +317,6 @@ object MainForm: TMainForm
       Size.Width = 648.000000000000000000
       Size.Height = 50.000000000000000000
       Size.PlatformDefault = False
-    end
-  end
-  object PopupMenuImg: TPopupMenu
-    OnPopup = PopupMenuImgPopup
-    Left = 248
-    Top = 307
-    object miCopy: TMenuItem
-      Text = 'miCopy'
-    end
-    object miSave: TMenuItem
-      Text = 'miSave'
     end
   end
   object MainMenu1: TMainMenu

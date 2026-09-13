@@ -1,4 +1,4 @@
-unit Source.Localization;
+unit Electrode.Localization;
 
 {$IFDEF FPC}
   {$MODE DELPHI}
