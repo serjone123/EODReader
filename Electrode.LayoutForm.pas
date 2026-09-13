@@ -127,7 +127,7 @@ var
   end;
 
 begin
-  inherited Create(AOwner);
+  inherited CreateNew(AOwner);
 
   Caption := 'Разметка электродов и аквариума';
   Width := 1100;

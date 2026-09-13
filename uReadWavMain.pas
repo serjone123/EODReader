@@ -18,6 +18,7 @@ uses
 , GUI.FileNaming
 , Threads.Overview
 , Threads.PeakOverview, FMX.Menus
+, Electrode.LayoutForm
  ;
 
 type
@@ -48,6 +49,9 @@ type
     PopupMenuImg: TPopupMenu;
     miCopy: TMenuItem;
     miSave: TMenuItem;
+    MainMenu1: TMainMenu;
+    btGeometry: TButton;
+    procedure btGeometryClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure FAnalyzeButtonClick(Sender: TObject);
@@ -2417,6 +2421,11 @@ begin
   result.Parent:= PM;
   result.Text:=AText ;
   result.OnClick:=AAction ;
+end;
+
+procedure TMainForm.btGeometryClick(Sender: TObject);
+begin
+  ShowElectrodeLayoutForm
 end;
 
 procedure TMainForm.PaintBoxMouseDown(Sender: TObject; Button: TMouseButton;

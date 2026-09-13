@@ -188,7 +188,10 @@ type
     procedure ClampView;
     procedure DoViewChanged;
     function ViewWidth: Int64;
+    function GetPlotAsBitmap: TBitmap;
     procedure CopyIMG(Sender: TObject);
+    procedure SaveToFile(const AFileName: string);
+    procedure RenderPlot(Canvas: TCanvas; const ARect: TRectF);
   public
     constructor Create(APaintBox: TPaintBox);
     destructor Destroy; override;
@@ -299,6 +302,25 @@ end;
 function TSignalPlot.GetMode: TPlotMode;
 begin
   Result := FMode;
+end;
+
+function TSignalPlot.GetPlotAsBitmap: TBitmap;
+begin
+  // Создаем битмап по размеру PaintBox
+  Result := TBitmap.Create(Round(FPaintBox.Width), Round(FPaintBox.Height));
+  try
+    if Result.Canvas.BeginScene then
+    try
+      Result.Canvas.Clear(TAlphaColorRec.White); // Задаем белый фон
+      RenderPlot(Result.Canvas, TRectF.Create(0, 0, Result.Width, Result.Height));
+    finally
+      Result.Canvas.EndScene;
+    end;
+  except
+    // Если что-то пошло не так, освобождаем память и пробрасываем ошибку дальше
+    Result.Free;
+    raise;
+  end;
 end;
 
 procedure TSignalPlot.SetMode(AMode: TPlotMode);
@@ -679,27 +701,30 @@ end;
 { ------------------------------------------------------------------ }
 procedure TSignalPlot.CopyIMG(Sender: TObject);
 var
-  ClipboardService: IFMXClipboardService;
-  Bitmap: TBitmap;
+  Svc: IFMXClipboardService;
+  Bmp: TBitmap;
 begin
-
-  try
-
-
-    // Проверяем, что изображение действительно загрузилось
-//    if FPaintBox.paiCanvas.Bitmap.IsEmpty then
-//      Exit;
-
-    // Получаем сервис буфера обмена
-//    if TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, ClipboardService) then
-//      // Передаём изображение в буфер. Сервис сам создаёт копию данных,
-//      // поэтому после вызова Bitmap можно безопасно освободить
-//      ClipboardService.SetClipboard(TValue.From<TBitmap>(FPaintBox.Canvas.Bitmap));
-  finally
-//    Bitmap.Free;
+  if TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Svc) then
+  begin
+    Bmp := GetPlotAsBitmap; // Получаем готовый кадр
+    try
+      Svc.SetClipboard(Bmp);
+    finally
+      Bmp.Free;
+    end;
   end;
+end;
 
-
+procedure TSignalPlot.SaveToFile(const AFileName: string);
+var
+  Bmp: TBitmap;
+begin
+  Bmp := GetPlotAsBitmap; // Получаем готовый кадр
+  try
+    Bmp.SaveToFile(AFileName);
+  finally
+    Bmp.Free;
+  end;
 end;
 { ------------------------------------------------------------------ }
 {  Mouse handlers                                                    }
@@ -1394,7 +1419,7 @@ begin
   end;
 end;
 
-procedure TSignalPlot.PaintBoxPaint(Sender: TObject; Canvas: TCanvas);
+procedure TSignalPlot.RenderPlot(Canvas: TCanvas; const ARect: TRectF);
 const
   MarginL = 78;
   MarginR = 12;
@@ -1645,6 +1670,12 @@ end;
     RectF(MarginL, FPaintBox.Height - 22, FPaintBox.Width - 5, FPaintBox.Height),
     S, False, 1, [],
     TTextAlign.Leading, TTextAlign.Center);
+
+end;
+
+procedure TSignalPlot.PaintBoxPaint(Sender: TObject; Canvas: TCanvas);
+begin
+  RenderPlot(Canvas, FPaintBox.LocalRect)
 end;
 
 procedure TSignalPlot.SetChannels(
