@@ -23,7 +23,11 @@ uses
   Core.ConfigStore in 'Core.ConfigStore.pas',
   GUI.SettingsForm in 'GUI.SettingsForm.pas',
   Threads.Overview in 'Threads.Overview.pas',
-  Threads.PeakOverview in 'Threads.PeakOverview.pas';
+  Threads.PeakOverview in 'Threads.PeakOverview.pas',
+  Electrode.LayoutForm in 'Electrode.LayoutForm.pas',
+  Electrode.Layout in 'Electrode.Layout.pas',
+  Source.Localization in 'Source.Localization.pas',
+  Electrode.Geometry in 'Electrode.Geometry.pas';
 
 {$R *.res}
 
