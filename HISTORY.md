@@ -20,6 +20,40 @@
 
 ## Записи
 
+### 2026-09-18 — Перевод Threads.Overview и Threads.PeakOverview на TEodBackgroundThread; доработка Threads.Base — Claude
+
+- `Threads.Overview.pas` и `Threads.PeakOverview.pas` переведены на
+  `TEodBackgroundThread`: собственные `FCancelEvent`, `FCanceled`,
+  `FErrorText`, `Cancel`, `CancelRequested` и деструктор удалены, `Execute`
+  заменён на `RunTask`, проверки отмены — на `CheckCancel`, ранние `Exit`
+  с текстом ошибки — на `raise Exception`. Освобождение источника
+  (`Source`/`Store`) по-прежнему происходит до вызова `DoFinished`.
+- `Threads.Base.pas`: `Execute` перенесён в `protected` (serjone); вызов
+  `DoFinished` защищён `try/except` — исключение из обработчика владельца
+  пробрасывается в главный поток через `TThread.Queue`, а не теряется в
+  `FatalException` потока; `raise EAbort.Create('')` заменён на `Abort`.
+- Математика построения обзорных огибающих не менялась.
+- Проверено, собирается, запускается.
+- Автор: Claude (по запросу serjone).
+
+### 2026-09-18 — Перевод Threads.Analysis и Threads.VideoExport на TEodBackgroundThread — Claude
+
+- `Threads.Analysis.pas` и `Threads.VideoExport.pas` переведены на
+  `TEodBackgroundThread`: собственные `FCancelEvent`, `FCanceled`,
+  `FErrorText`, `Cancel`, `CancelRequested` и деструктор удалены,
+  тело `Execute` заменено на `RunTask`, финальный колбэк — на `DoFinished`.
+- В `Threads.Analysis` удалён `DoTerminate` (только вызывал `inherited`).
+  Отмена детектора по-прежнему идёт через колбэк `DetectorCancel` →
+  `CancelRequested`; при отмене результат анализа форма отбрасывает,
+  как и раньше.
+- В `Threads.VideoExport` ветки `Exit`/`FCanceled := True` заменены на
+  `CheckCancel` и `raise Exception.Create(...)`; ошибка этапа B теперь
+  доставляется через исключение, `FErrorText` заполняет базовый класс.
+- Математика и алгоритмы обработки не менялись. Публичный интерфейс потоков
+  для формы не менялся.
+- Проверено, собирается, запускается.
+- Автор: Claude (по запросу serjone).
+
 ### 2026-09-18 — Базовый класс для фоновых потоков
 
 - Добавлен модуль `Threads.Base.pas` с классом `TEodBackgroundThread`.

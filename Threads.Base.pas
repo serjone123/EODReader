@@ -33,11 +33,12 @@ type
     procedure CheckCancel;
 
     property CancelRequested: Boolean read GetCancelRequested;
+
+    procedure Execute; override;
+
   public
     constructor Create;
     destructor Destroy; override;
-
-    procedure Execute; override;
 
     { Устанавливает событие отмены. Безопасно вызывать из любого потока. }
     procedure Cancel;
@@ -72,7 +73,8 @@ end;
 procedure TEodBackgroundThread.CheckCancel;
 begin
   if CancelRequested then
-    raise EAbort.Create('');
+//    raise EAbort.Create('');
+    Abort
 end;
 
 procedure TEodBackgroundThread.DoProgress;
@@ -88,7 +90,7 @@ begin
     try
       RunTask;
     except
-      on E: EAbort do
+      on EAbort do
         FCanceled := True;
       on E: Exception do
       begin

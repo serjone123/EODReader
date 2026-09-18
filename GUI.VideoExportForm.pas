@@ -1,14 +1,14 @@
-unit GUI.VideoExportForm;
+п»їunit GUI.VideoExportForm;
 
-{ Немодальное окно экспорта видео с наложенной обзорной полосой.
-  Код-only форма (без .fmx), по аналогии с GUI.SettingsForm.pas —
-  события назначаются в конструкторе, а не через RTTI published,
-  см. AGENTS.md, раздел "Обработчики событий: назначать кодом, а не
-  через форму".
+{ РќРµРјРѕРґР°Р»СЊРЅРѕРµ РѕРєРЅРѕ СЌРєСЃРїРѕСЂС‚Р° РІРёРґРµРѕ СЃ РЅР°Р»РѕР¶РµРЅРЅРѕР№ РѕР±Р·РѕСЂРЅРѕР№ РїРѕР»РѕСЃРѕР№.
+  РљРѕРґ-only С„РѕСЂРјР° (Р±РµР· .fmx), РїРѕ Р°РЅР°Р»РѕРіРёРё СЃ GUI.SettingsForm.pas вЂ”
+  СЃРѕР±С‹С‚РёСЏ РЅР°Р·РЅР°С‡Р°СЋС‚СЃСЏ РІ РєРѕРЅСЃС‚СЂСѓРєС‚РѕСЂРµ, Р° РЅРµ С‡РµСЂРµР· RTTI published,
+  СЃРј. AGENTS.md, СЂР°Р·РґРµР» "РћР±СЂР°Р±РѕС‚С‡РёРєРё СЃРѕР±С‹С‚РёР№: РЅР°Р·РЅР°С‡Р°С‚СЊ РєРѕРґРѕРј, Р° РЅРµ
+  С‡РµСЂРµР· С„РѕСЂРјСѓ".
 
-  Не блокирует основной поток: рендер и композитинг идут в фоновом
-  TEodVideoExportThread, форма только показывает прогресс и позволяет
-  отменить операцию (кнопка "Отмена"). }
+  РќРµ Р±Р»РѕРєРёСЂСѓРµС‚ РѕСЃРЅРѕРІРЅРѕР№ РїРѕС‚РѕРє: СЂРµРЅРґРµСЂ Рё РєРѕРјРїРѕР·РёС‚РёРЅРі РёРґСѓС‚ РІ С„РѕРЅРѕРІРѕРј
+  TEodVideoExportThread, С„РѕСЂРјР° С‚РѕР»СЊРєРѕ РїРѕРєР°Р·С‹РІР°РµС‚ РїСЂРѕРіСЂРµСЃСЃ Рё РїРѕР·РІРѕР»СЏРµС‚
+  РѕС‚РјРµРЅРёС‚СЊ РѕРїРµСЂР°С†РёСЋ (РєРЅРѕРїРєР° "РћС‚РјРµРЅР°"). }
 
 interface
 
@@ -19,11 +19,11 @@ uses
   Core.Types, Threads.VideoExport, Video.FfmpegExport, Video.FfmpegLocate;
 
 type
-  { Источник данных огибающей и параметров сессии — форма не знает про
-    TEodGuiSession напрямую (см. GUI.Model.pas), чтобы не тянуть в
-    GUI.VideoExportForm лишние зависимости; вызывающий код (uReadWavMain)
-    заполняет эту запись перед показом формы теми же массивами, что уже
-    построены для экранного обзорного графика. }
+  { РСЃС‚РѕС‡РЅРёРє РґР°РЅРЅС‹С… РѕРіРёР±Р°СЋС‰РµР№ Рё РїР°СЂР°РјРµС‚СЂРѕРІ СЃРµСЃСЃРёРё вЂ” С„РѕСЂРјР° РЅРµ Р·РЅР°РµС‚ РїСЂРѕ
+    TEodGuiSession РЅР°РїСЂСЏРјСѓСЋ (СЃРј. GUI.Model.pas), С‡С‚РѕР±С‹ РЅРµ С‚СЏРЅСѓС‚СЊ РІ
+    GUI.VideoExportForm Р»РёС€РЅРёРµ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё; РІС‹Р·С‹РІР°СЋС‰РёР№ РєРѕРґ (uReadWavMain)
+    Р·Р°РїРѕР»РЅСЏРµС‚ СЌС‚Сѓ Р·Р°РїРёСЃСЊ РїРµСЂРµРґ РїРѕРєР°Р·РѕРј С„РѕСЂРјС‹ С‚РµРјРё Р¶Рµ РјР°СЃСЃРёРІР°РјРё, С‡С‚Рѕ СѓР¶Рµ
+    РїРѕСЃС‚СЂРѕРµРЅС‹ РґР»СЏ СЌРєСЂР°РЅРЅРѕРіРѕ РѕР±Р·РѕСЂРЅРѕРіРѕ РіСЂР°С„РёРєР°. }
   TVideoExportSessionData = record
     SampleRate: Integer;
     TotalFrames: Int64;
@@ -79,10 +79,10 @@ uses
   System.IOUtils, System.Math;
 
 const
-  { Preview всегда рендерится с начала видео эксперимента (VideoTime = 0):
-    именно это пользователь и увидит первым делом, сверяя совпадение
-    начала полосы с видимым в кадре опорным событием (например, щелчком
-    стимулятора). }
+  { Preview РІСЃРµРіРґР° СЂРµРЅРґРµСЂРёС‚СЃСЏ СЃ РЅР°С‡Р°Р»Р° РІРёРґРµРѕ СЌРєСЃРїРµСЂРёРјРµРЅС‚Р° (VideoTime = 0):
+    РёРјРµРЅРЅРѕ СЌС‚Рѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ Рё СѓРІРёРґРёС‚ РїРµСЂРІС‹Рј РґРµР»РѕРј, СЃРІРµСЂСЏСЏ СЃРѕРІРїР°РґРµРЅРёРµ
+    РЅР°С‡Р°Р»Р° РїРѕР»РѕСЃС‹ СЃ РІРёРґРёРјС‹Рј РІ РєР°РґСЂРµ РѕРїРѕСЂРЅС‹Рј СЃРѕР±С‹С‚РёРµРј (РЅР°РїСЂРёРјРµСЂ, С‰РµР»С‡РєРѕРј
+    СЃС‚РёРјСѓР»СЏС‚РѕСЂР°). }
   DefaultPreviewDurationSec = 15;
 
 procedure ShowVideoExportForm(AOwner: TComponent;
@@ -101,7 +101,7 @@ begin
   FSessionData := ASessionData;
   FExportThread := nil;
 
-  Caption := 'Экспорт видео с обзорной полосой';
+  Caption := 'Р­РєСЃРїРѕСЂС‚ РІРёРґРµРѕ СЃ РѕР±Р·РѕСЂРЅРѕР№ РїРѕР»РѕСЃРѕР№';
   Width := 540;
   Height := 320;
   Position := TFormPosition.ScreenCenter;
@@ -111,7 +111,7 @@ begin
   if TryLocateFfmpeg(FFfmpegPath) then
     FFfmpegLabel.Text := 'ffmpeg: ' + FFfmpegPath
   else
-    FFfmpegLabel.Text := 'ffmpeg не найден — будет предложено выбрать при запуске';
+    FFfmpegLabel.Text := 'ffmpeg РЅРµ РЅР°Р№РґРµРЅ вЂ” Р±СѓРґРµС‚ РїСЂРµРґР»РѕР¶РµРЅРѕ РІС‹Р±СЂР°С‚СЊ РїСЂРё Р·Р°РїСѓСЃРєРµ';
 end;
 
 procedure TEodVideoExportForm.BuildUI;
@@ -125,7 +125,7 @@ begin
   Lbl.Parent := Self;
   Lbl.Position.X := 12; Lbl.Position.Y := Y;
   Lbl.Width := 120; Lbl.Height := 22;
-  Lbl.Text := 'Видео эксперимента:';
+  Lbl.Text := 'Р’РёРґРµРѕ СЌРєСЃРїРµСЂРёРјРµРЅС‚Р°:';
 
   FEdVideoFile := TEdit.Create(Self);
   FEdVideoFile.Parent := Self;
@@ -136,7 +136,7 @@ begin
   FBtnBrowseVideo.Parent := Self;
   FBtnBrowseVideo.Position.X := 448; FBtnBrowseVideo.Position.Y := Y;
   FBtnBrowseVideo.Width := 80; FBtnBrowseVideo.Height := 24;
-  FBtnBrowseVideo.Text := 'Обзор...';
+  FBtnBrowseVideo.Text := 'РћР±Р·РѕСЂ...';
   FBtnBrowseVideo.OnClick := BrowseVideoClick;
   Y := Y + 34;
 
@@ -144,7 +144,7 @@ begin
   Lbl.Parent := Self;
   Lbl.Position.X := 12; Lbl.Position.Y := Y;
   Lbl.Width := 280; Lbl.Height := 22;
-  Lbl.Text := 'Смещение Offset, сек (VideoTime = SampleTime + Offset):';
+  Lbl.Text := 'РЎРјРµС‰РµРЅРёРµ Offset, СЃРµРє (VideoTime = SampleTime + Offset):';
 
   FEdOffsetSec := TEdit.Create(Self);
   FEdOffsetSec.Parent := Self;
@@ -157,7 +157,7 @@ begin
   Lbl.Parent := Self;
   Lbl.Position.X := 12; Lbl.Position.Y := Y;
   Lbl.Width := 220; Lbl.Height := 22;
-  Lbl.Text := 'Длительность превью, сек:';
+  Lbl.Text := 'Р”Р»РёС‚РµР»СЊРЅРѕСЃС‚СЊ РїСЂРµРІСЊСЋ, СЃРµРє:';
 
   FEdPreviewDurationSec := TEdit.Create(Self);
   FEdPreviewDurationSec.Parent := Self;
@@ -170,21 +170,21 @@ begin
   FBtnPreview.Parent := Self;
   FBtnPreview.Position.X := 12; FBtnPreview.Position.Y := Y;
   FBtnPreview.Width := 150; FBtnPreview.Height := 28;
-  FBtnPreview.Text := 'Превью (короткий кусок)';
+  FBtnPreview.Text := 'РџСЂРµРІСЊСЋ (РєРѕСЂРѕС‚РєРёР№ РєСѓСЃРѕРє)';
   FBtnPreview.OnClick := PreviewClick;
 
   FBtnFull := TButton.Create(Self);
   FBtnFull.Parent := Self;
   FBtnFull.Position.X := 170; FBtnFull.Position.Y := Y;
   FBtnFull.Width := 140; FBtnFull.Height := 28;
-  FBtnFull.Text := 'Полный рендер';
+  FBtnFull.Text := 'РџРѕР»РЅС‹Р№ СЂРµРЅРґРµСЂ';
   FBtnFull.OnClick := FullClick;
 
   FBtnCancel := TButton.Create(Self);
   FBtnCancel.Parent := Self;
   FBtnCancel.Position.X := 318; FBtnCancel.Position.Y := Y;
   FBtnCancel.Width := 100; FBtnCancel.Height := 28;
-  FBtnCancel.Text := 'Отмена';
+  FBtnCancel.Text := 'РћС‚РјРµРЅР°';
   FBtnCancel.Enabled := False;
   FBtnCancel.OnClick := CancelClick;
   Y := Y + 40;
@@ -208,7 +208,7 @@ var
 begin
   D := TOpenDialog.Create(Self);
   try
-    D.Filter := 'Видео (*.mp4;*.mov;*.avi;*.mkv)|*.mp4;*.mov;*.avi;*.mkv|Все файлы|*.*';
+    D.Filter := 'Р’РёРґРµРѕ (*.mp4;*.mov;*.avi;*.mkv)|*.mp4;*.mov;*.avi;*.mkv|Р’СЃРµ С„Р°Р№Р»С‹|*.*';
     if D.Execute then
       FEdVideoFile.Text := D.FileName;
   finally
@@ -226,8 +226,8 @@ begin
 
   D := TOpenDialog.Create(Self);
   try
-    D.Filter := 'ffmpeg.exe|ffmpeg.exe|Все файлы|*.*';
-    D.Title := 'Укажите путь к ffmpeg.exe';
+    D.Filter := 'ffmpeg.exe|ffmpeg.exe|Р’СЃРµ С„Р°Р№Р»С‹|*.*';
+    D.Title := 'РЈРєР°Р¶РёС‚Рµ РїСѓС‚СЊ Рє ffmpeg.exe';
     Result := D.Execute;
     if Result then
     begin
@@ -266,7 +266,7 @@ begin
   if Assigned(FExportThread) then
   begin
     FExportThread.Cancel;
-    FStatusLabel.Text := 'Отмена запрошена...';
+    FStatusLabel.Text := 'РћС‚РјРµРЅР° Р·Р°РїСЂРѕС€РµРЅР°...';
     FBtnCancel.Enabled := False;
   end;
 end;
@@ -284,20 +284,20 @@ begin
 
   if not TFile.Exists(FEdVideoFile.Text) then
   begin
-    FStatusLabel.Text := 'Укажите существующий файл видео эксперимента.';
+    FStatusLabel.Text := 'РЈРєР°Р¶РёС‚Рµ СЃСѓС‰РµСЃС‚РІСѓСЋС‰РёР№ С„Р°Р№Р» РІРёРґРµРѕ СЌРєСЃРїРµСЂРёРјРµРЅС‚Р°.';
     Exit;
   end;
 
   if not EnsureFfmpegAvailable then
   begin
-    FStatusLabel.Text := 'ffmpeg не выбран — экспорт невозможен.';
+    FStatusLabel.Text := 'ffmpeg РЅРµ РІС‹Р±СЂР°РЅ вЂ” СЌРєСЃРїРѕСЂС‚ РЅРµРІРѕР·РјРѕР¶РµРЅ.';
     Exit;
   end;
 
   if not TryStrToFloat(FEdOffsetSec.Text.Replace(',', '.'), Offset,
     TFormatSettings.Invariant) then
   begin
-    FStatusLabel.Text := 'Некорректное значение Offset.';
+    FStatusLabel.Text := 'РќРµРєРѕСЂСЂРµРєС‚РЅРѕРµ Р·РЅР°С‡РµРЅРёРµ Offset.';
     Exit;
   end;
 
@@ -305,12 +305,12 @@ begin
     PreviewDuration, TFormatSettings.Invariant) or (PreviewDuration <= 0) then
     PreviewDuration := DefaultPreviewDurationSec;
 
-  FStatusLabel.Text := 'Определение параметров видео (ffprobe)...';
+  FStatusLabel.Text := 'РћРїСЂРµРґРµР»РµРЅРёРµ РїР°СЂР°РјРµС‚СЂРѕРІ РІРёРґРµРѕ (ffprobe)...';
   Application.ProcessMessages;
 
   if not ProbeSourceVideo(FFfmpegPath, FEdVideoFile.Text, Info, ProbeError) then
   begin
-    FStatusLabel.Text := 'Ошибка ffprobe: ' + ProbeError;
+    FStatusLabel.Text := 'РћС€РёР±РєР° ffprobe: ' + ProbeError;
     Exit;
   end;
 
@@ -325,9 +325,9 @@ begin
   Req.TotalFrames := FSessionData.TotalFrames;
   Req.OffsetSec := Offset;
 
-  { Полоса — по нижнему краю кадра, во всю ширину, оставшаяся часть
-    высоты кадра ниже 85% (первая версия; настройка позиции/размера —
-    на будущее, см. TODO.md). }
+  { РџРѕР»РѕСЃР° вЂ” РїРѕ РЅРёР¶РЅРµРјСѓ РєСЂР°СЋ РєР°РґСЂР°, РІРѕ РІСЃСЋ С€РёСЂРёРЅСѓ, РѕСЃС‚Р°РІС€Р°СЏСЃСЏ С‡Р°СЃС‚СЊ
+    РІС‹СЃРѕС‚С‹ РєР°РґСЂР° РЅРёР¶Рµ 85% (РїРµСЂРІР°СЏ РІРµСЂСЃРёСЏ; РЅР°СЃС‚СЂРѕР№РєР° РїРѕР·РёС†РёРё/СЂР°Р·РјРµСЂР° вЂ”
+    РЅР° Р±СѓРґСѓС‰РµРµ, СЃРј. TODO.md). }
   Req.OverlayX := 0;
   Req.OverlayY := Round(Info.Height * 0.85);
   Req.OutputHeight := Info.Height - Req.OverlayY;
@@ -351,13 +351,13 @@ begin
     Req.OutputFileName := TPath.Combine(OutputDir, BaseName + '_preview.mp4');
   end;
 
-  { Кэширование готовой полосы между повторными запусками с одинаковым
-    Offset — отдельная задача (см. TODO.md); пока каждый запуск рендерит
-    полосу заново. }
+  { РљСЌС€РёСЂРѕРІР°РЅРёРµ РіРѕС‚РѕРІРѕР№ РїРѕР»РѕСЃС‹ РјРµР¶РґСѓ РїРѕРІС‚РѕСЂРЅС‹РјРё Р·Р°РїСѓСЃРєР°РјРё СЃ РѕРґРёРЅР°РєРѕРІС‹Рј
+    Offset вЂ” РѕС‚РґРµР»СЊРЅР°СЏ Р·Р°РґР°С‡Р° (СЃРј. TODO.md); РїРѕРєР° РєР°Р¶РґС‹Р№ Р·Р°РїСѓСЃРє СЂРµРЅРґРµСЂРёС‚
+    РїРѕР»РѕСЃСѓ Р·Р°РЅРѕРІРѕ. }
   Req.ReuseExistingBarVideo := False;
 
   SetBusy(True);
-  FStatusLabel.Text := 'Запуск рендера...';
+  FStatusLabel.Text := 'Р—Р°РїСѓСЃРє СЂРµРЅРґРµСЂР°...';
 
   FExportThread := TEodVideoExportThread.Create(Req);
   FExportThread.OnProgress := ExportProgress;
@@ -373,8 +373,8 @@ var
   Percent: Integer;
 begin
   case Stage of
-    vesRenderingBar: StageText := 'Рендер полосы';
-    vesCompositing: StageText := 'Наложение на видео (ffmpeg)';
+    vesRenderingBar: StageText := 'Р РµРЅРґРµСЂ РїРѕР»РѕСЃС‹';
+    vesCompositing: StageText := 'РќР°Р»РѕР¶РµРЅРёРµ РЅР° РІРёРґРµРѕ (ffmpeg)';
   end;
 
   if Total > 0 then
@@ -392,11 +392,11 @@ begin
   SetBusy(False);
 
   if Canceled then
-    FStatusLabel.Text := 'Отменено пользователем.'
+    FStatusLabel.Text := 'РћС‚РјРµРЅРµРЅРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»РµРј.'
   else if ErrorText <> '' then
-    FStatusLabel.Text := 'Ошибка: ' + ErrorText
+    FStatusLabel.Text := 'РћС€РёР±РєР°: ' + ErrorText
   else
-    FStatusLabel.Text := 'Готово: ' + OutputFileName;
+    FStatusLabel.Text := 'Р“РѕС‚РѕРІРѕ: ' + OutputFileName;
 end;
 
 procedure TEodVideoExportForm.ExportThreadTerminated(Sender: TObject);

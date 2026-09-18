@@ -20,26 +20,26 @@
 
 ## P0 — открытие файлов и GUI
 
-- [ ] Показывать постоянную информацию об открытом файле: имя/путь, формат, sample rate, число каналов, число сэмплов или длительность.
+- [x] Показывать постоянную информацию об открытом файле: имя/путь, формат, sample rate, число каналов, число сэмплов или длительность.
 - [x] Автоматически искать второй WAV: `*_Tr12.wav` → `*_Tr34.wav`; при отсутствии предупредить и предложить ручной выбор.
 - [x] Для пары `ZOOM0005_Tr12.wav`/`ZOOM0005_Tr34.wav` предлагать базовое имя сохранения `ZOOM0005.eodpk`.
 - [x] Добавить в контекстное меню копирование текущего графика в буфер обмена и сохранение текущего вида графика в файл.
 - [x] Устранить фриз интерфейса при открытии больших WAV: перенести тяжёлые операции из UI-потока, сохранить прогресс и отмену.
 - [x] Устранить фриз интерфейса при открытии больших EODPK: расчёт Overview выполнять в фоне с прогрессом и отменой.
-- [ ] Перевести остальные фоновые потоки на `TEodBackgroundThread`:
-      - [ ] `Threads.PeakOverview.pas` — `TEodPeakOverviewThread`
-      - [ ] `Threads.Overview.pas` — `TEodOverviewThread`
-      - [ ] `Threads.Analysis.pas` — `TEodAnalysisThread`
+- [x] Перевести остальные фоновые потоки на `TEodBackgroundThread`:
+      - [x] `Threads.PeakOverview.pas` — `TEodPeakOverviewThread`
+      - [x] `Threads.Overview.pas` — `TEodOverviewThread`
+      - [x] `Threads.Analysis.pas` — `TEodAnalysisThread`
             (проверить взаимодействие с существующим `DoTerminate`
             и колбэками детектора)
-      - [ ] `Threads.VideoExport.pas` — `TEodVideoExportThread`
+      - [x] `Threads.VideoExport.pas` — `TEodVideoExportThread`
             (два этапа: render bar + composite; вынести в `RunTask`
             оба этапа и сохранить `FStage`/`FDone`/`FTotal`)
 
 ## P0 — стабилизация и фиксация семантики
 
 - [x] Исправить off-by-one в `Correlation`; regression test ещё нужен.
-- [ ] Определить полярность корреляции: сейчас используется `Abs(correlation)`.
+- [x] Определить полярность корреляции: сейчас используется `Abs(correlation)`.
 - [ ] Зафиксировать семантику позиции события.
 - [ ] Определить правило классификации одного кандидата.
 - [ ] Переработать подавление близких событий.
@@ -88,8 +88,8 @@
 
 ## P1 — архитектура фоновых задач
 
-- [ ] Сравнить `Threads.WavOpen.pas`, `Threads.Overview.pas` и `Threads.PeakOverview.pas`: поля, lifecycle, отмену, progress/finished callbacks и обработку ошибок.
-- [ ] Вынести общую инфраструктуру background thread (cancel, progress, finished/error, lifecycle), не объединяя разные задачи в один универсальный thread с `case`.
+- [x] Сравнить `Threads.WavOpen.pas`, `Threads.Overview.pas` и `Threads.PeakOverview.pas`: поля, lifecycle, отмену, progress/finished callbacks и обработку ошибок.
+- [x] Вынести общую инфраструктуру background thread (cancel, progress, finished/error, lifecycle), не объединяя разные задачи в один универсальный thread с `case`.
 - [ ] Рассмотреть общий слой источника данных для Overview (`WAV` и `EODPK`) и отдельный calculator, сохранив разные алгоритмы чтения данных.
 - [ ] После рефакторинга удалить дублирование только после проверки сборки и тестов на большом WAV и большом EODPK.
 
