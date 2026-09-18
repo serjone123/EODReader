@@ -1,4 +1,4 @@
-unit Threads.PeakOverview;
+п»їunit Threads.PeakOverview;
 
 interface
 
@@ -14,8 +14,8 @@ type
     TotalFrames: Int64; Canceled: Boolean;
     const ErrorText: string) of object;
 
-  { Построение обзорной огибающей из кэша .eodpk. Отмену, тексты ошибок
-    и вызов DoFinished (в главном потоке) обеспечивает TEodBackgroundThread. }
+  { РџРѕСЃС‚СЂРѕРµРЅРёРµ РѕР±Р·РѕСЂРЅРѕР№ РѕРіРёР±Р°СЋС‰РµР№ РёР· РєСЌС€Р° .eodpk. РћС‚РјРµРЅСѓ, С‚РµРєСЃС‚С‹ РѕС€РёР±РѕРє
+    Рё РІС‹Р·РѕРІ DoFinished (РІ РіР»Р°РІРЅРѕРј РїРѕС‚РѕРєРµ) РѕР±РµСЃРїРµС‡РёРІР°РµС‚ TEodBackgroundThread. }
   TEodPeakOverviewThread = class(TEodBackgroundThread)
   private
     FFileName: string;
@@ -101,18 +101,18 @@ begin
 
     if (TotalFrames <= 0) or (PeakCount <= 0) then
       raise Exception.CreateFmt(
-        'Некорректные параметры peak-файла: TotalFrames=%d, PeakCount=%d',
+        'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Рµ РїР°СЂР°РјРµС‚СЂС‹ peak-С„Р°Р№Р»Р°: TotalFrames=%d, PeakCount=%d',
         [TotalFrames, PeakCount]);
 
     if not Store.ReadEnvelope(0, PeakCount - 1, MaxDisplayPoints,
       Envelope) then
-      raise Exception.Create('Не удалось прочитать огибающую из peak-файла');
+      raise Exception.Create('РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРѕС‡РёС‚Р°С‚СЊ РѕРіРёР±Р°СЋС‰СѓСЋ РёР· peak-С„Р°Р№Р»Р°');
 
     CheckCancel;
 
     N := Length(Envelope);
     if N <= 0 then
-      raise Exception.Create('Огибающая пуста');
+      raise Exception.Create('РћРіРёР±Р°СЋС‰Р°СЏ РїСѓСЃС‚Р°');
 
     BinCount := N;
     if BinCount > FPoints then
@@ -177,8 +177,8 @@ begin
     FProcessed := TotalFrames;
     TThread.Synchronize(Self, DoProgress);
   finally
-    { Файл закрываем до DoFinished (который вызывает база): форма может
-      сразу переоткрыть этот же .eodpk. }
+    { Р¤Р°Р№Р» Р·Р°РєСЂС‹РІР°РµРј РґРѕ DoFinished (РєРѕС‚РѕСЂС‹Р№ РІС‹Р·С‹РІР°РµС‚ Р±Р°Р·Р°): С„РѕСЂРјР° РјРѕР¶РµС‚
+      СЃСЂР°Р·Сѓ РїРµСЂРµРѕС‚РєСЂС‹С‚СЊ СЌС‚РѕС‚ Р¶Рµ .eodpk. }
     Store.Free;
   end;
 end;

@@ -1,4 +1,4 @@
-unit GUI.Model;
+﻿unit GUI.Model;
 
 interface
 

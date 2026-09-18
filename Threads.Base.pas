@@ -1,4 +1,4 @@
-unit Threads.Base;
+п»їunit Threads.Base;
 
 interface
 
@@ -6,17 +6,17 @@ uses
   System.Classes, System.SyncObjs, System.SysUtils;
 
 type
-  { Базовый класс для фоновых воркеров GUI.
-    Берёт на себя общий boilerplate: событие отмены, тексты ошибок
-    и гарантированный вызов DoFinished в finally при любом сценарии
-    (нормальное завершение, Exit, отмена, исключение).
+  { Р‘Р°Р·РѕРІС‹Р№ РєР»Р°СЃСЃ РґР»СЏ С„РѕРЅРѕРІС‹С… РІРѕСЂРєРµСЂРѕРІ GUI.
+    Р‘РµСЂС‘С‚ РЅР° СЃРµР±СЏ РѕР±С‰РёР№ boilerplate: СЃРѕР±С‹С‚РёРµ РѕС‚РјРµРЅС‹, С‚РµРєСЃС‚С‹ РѕС€РёР±РѕРє
+    Рё РіР°СЂР°РЅС‚РёСЂРѕРІР°РЅРЅС‹Р№ РІС‹Р·РѕРІ DoFinished РІ finally РїСЂРё Р»СЋР±РѕРј СЃС†РµРЅР°СЂРёРё
+    (РЅРѕСЂРјР°Р»СЊРЅРѕРµ Р·Р°РІРµСЂС€РµРЅРёРµ, Exit, РѕС‚РјРµРЅР°, РёСЃРєР»СЋС‡РµРЅРёРµ).
 
-    Потомок переопределяет:
-      RunTask     — вся предметная работа; может бросать исключения
-                    или вызывать CheckCancel;
-      DoFinished  — уведомление владельца о завершении (вызывается
-                    через TThread.Synchronize в главном потоке);
-      DoProgress  — по желанию, уведомление о прогрессе. }
+    РџРѕС‚РѕРјРѕРє РїРµСЂРµРѕРїСЂРµРґРµР»СЏРµС‚:
+      RunTask     вЂ” РІСЃСЏ РїСЂРµРґРјРµС‚РЅР°СЏ СЂР°Р±РѕС‚Р°; РјРѕР¶РµС‚ Р±СЂРѕСЃР°С‚СЊ РёСЃРєР»СЋС‡РµРЅРёСЏ
+                    РёР»Рё РІС‹Р·С‹РІР°С‚СЊ CheckCancel;
+      DoFinished  вЂ” СѓРІРµРґРѕРјР»РµРЅРёРµ РІР»Р°РґРµР»СЊС†Р° Рѕ Р·Р°РІРµСЂС€РµРЅРёРё (РІС‹Р·С‹РІР°РµС‚СЃСЏ
+                    С‡РµСЂРµР· TThread.Synchronize РІ РіР»Р°РІРЅРѕРј РїРѕС‚РѕРєРµ);
+      DoProgress  вЂ” РїРѕ Р¶РµР»Р°РЅРёСЋ, СѓРІРµРґРѕРјР»РµРЅРёРµ Рѕ РїСЂРѕРіСЂРµСЃСЃРµ. }
   TEodBackgroundThread = class(TThread)
   private
     FCancelEvent: TEvent;
@@ -29,7 +29,7 @@ type
     procedure DoFinished; virtual; abstract;
     procedure DoProgress; virtual;
 
-    { Кидает EAbort, если запрошена отмена. Вызывается из RunTask. }
+    { РљРёРґР°РµС‚ EAbort, РµСЃР»Рё Р·Р°РїСЂРѕС€РµРЅР° РѕС‚РјРµРЅР°. Р’С‹Р·С‹РІР°РµС‚СЃСЏ РёР· RunTask. }
     procedure CheckCancel;
 
     property CancelRequested: Boolean read GetCancelRequested;
@@ -40,7 +40,7 @@ type
     constructor Create;
     destructor Destroy; override;
 
-    { Устанавливает событие отмены. Безопасно вызывать из любого потока. }
+    { РЈСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ СЃРѕР±С‹С‚РёРµ РѕС‚РјРµРЅС‹. Р‘РµР·РѕРїР°СЃРЅРѕ РІС‹Р·С‹РІР°С‚СЊ РёР· Р»СЋР±РѕРіРѕ РїРѕС‚РѕРєР°. }
     procedure Cancel;
   end;
 
@@ -79,7 +79,7 @@ end;
 
 procedure TEodBackgroundThread.DoProgress;
 begin
-  { по умолчанию ничего не делаем }
+  { РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ РЅРёС‡РµРіРѕ РЅРµ РґРµР»Р°РµРј }
 end;
 
 procedure TEodBackgroundThread.Execute;

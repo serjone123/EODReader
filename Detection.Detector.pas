@@ -1,4 +1,4 @@
-unit Detection.Detector;
+﻿unit Detection.Detector;
 
 interface
 
@@ -40,7 +40,7 @@ const
     at offset Fir15HalfWidth.
 
     NOTE: this used to be 7 on each side, which only yields N-2 valid
-    core samples instead of N � the first and last sample of every
+    core samples instead of N — the first and last sample of every
     chunk were silently left at 0 in AllFiltered. That is now fixed. }
   Fir15HalfWidth = 8;
 

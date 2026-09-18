@@ -1,4 +1,4 @@
-unit Signal.Statistics;
+﻿unit Signal.Statistics;
 
 interface
 

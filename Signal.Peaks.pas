@@ -1,4 +1,4 @@
-unit Signal.Peaks;
+﻿unit Signal.Peaks;
 
 interface
 
@@ -58,7 +58,7 @@ begin
 
     { Absorb every stacked element that is NOT strictly greater than
       X[Idx] (equal values do not block, matching the original
-      "if X[I] > PeakValue then Break" � a break only on strict >). }
+      "if X[I] > PeakValue then Break" — a break only on strict >). }
     while (SP > 0) and (StackVal[SP - 1] <= X[Idx]) do
     begin
       if StackMin[SP - 1] < CurMin then

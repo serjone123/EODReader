@@ -1,4 +1,4 @@
-unit IO.SignalCache;
+﻿unit IO.SignalCache;
 
 interface
 

@@ -1,4 +1,4 @@
-unit Detection.Templates;
+﻿unit Detection.Templates;
 
 interface
 

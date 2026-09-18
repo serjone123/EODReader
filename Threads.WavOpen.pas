@@ -1,4 +1,4 @@
-unit Threads.WavOpen;
+п»їunit Threads.WavOpen;
 
 interface
 
@@ -72,8 +72,8 @@ begin
   FStageText := 'Checking audio parameters';
   TThread.Synchronize(Self, DoProgress);
 
-  { Метаданные должны быть доступны до передачи сессии в главный поток.
-    Большой аудиобуфер здесь не создаётся. }
+  { РњРµС‚Р°РґР°РЅРЅС‹Рµ РґРѕР»Р¶РЅС‹ Р±С‹С‚СЊ РґРѕСЃС‚СѓРїРЅС‹ РґРѕ РїРµСЂРµРґР°С‡Рё СЃРµСЃСЃРёРё РІ РіР»Р°РІРЅС‹Р№ РїРѕС‚РѕРє.
+    Р‘РѕР»СЊС€РѕР№ Р°СѓРґРёРѕР±СѓС„РµСЂ Р·РґРµСЃСЊ РЅРµ СЃРѕР·РґР°С‘С‚СЃСЏ. }
   if (FSession.SampleRate <= 0) or (FSession.TotalFrames <= 0) then
     raise Exception.Create('Invalid WAV source');
 

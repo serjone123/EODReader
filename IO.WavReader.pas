@@ -1,4 +1,4 @@
-unit IO.WavReader;
+﻿unit IO.WavReader;
 
 interface
 

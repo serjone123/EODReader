@@ -1,4 +1,4 @@
-unit GUI.SettingsForm;
+﻿unit GUI.SettingsForm;
 
 { A small modal dialog that lets the user edit the previously-hardcoded
   TEodDetectorConfig fields. Built entirely in code (no .fmx resource),

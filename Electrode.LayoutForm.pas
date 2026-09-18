@@ -1,4 +1,4 @@
-unit Electrode.LayoutForm;
+п»їunit Electrode.LayoutForm;
 
 interface
 
@@ -10,29 +10,29 @@ uses
   Electrode.Geometry, Electrode.Layout;
 
 type
-  { Режим, определяющий, что означает следующий клик по картинке. }
+  { Р РµР¶РёРј, РѕРїСЂРµРґРµР»СЏСЋС‰РёР№, С‡С‚Рѕ РѕР·РЅР°С‡Р°РµС‚ СЃР»РµРґСѓСЋС‰РёР№ РєР»РёРє РїРѕ РєР°СЂС‚РёРЅРєРµ. }
   TLayoutInputMode = (limNone, limCorners, limPair, limFish);
 
-  { Тип последнего ЗАВЕРШЁННОГО действия пользователя (для корректной
-    работы "Отменить последнюю точку" - без этого трекера Undo не мог
-    бы надёжно определить, что именно отменять, если, например, только
-    что была добавлена отметка рыбы, а до этого - пара электродов). }
+  { РўРёРї РїРѕСЃР»РµРґРЅРµРіРѕ Р—РђР’Р•Р РЁРЃРќРќРћР“Рћ РґРµР№СЃС‚РІРёСЏ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ (РґР»СЏ РєРѕСЂСЂРµРєС‚РЅРѕР№
+    СЂР°Р±РѕС‚С‹ "РћС‚РјРµРЅРёС‚СЊ РїРѕСЃР»РµРґРЅСЋСЋ С‚РѕС‡РєСѓ" - Р±РµР· СЌС‚РѕРіРѕ С‚СЂРµРєРµСЂР° Undo РЅРµ РјРѕРі
+    Р±С‹ РЅР°РґС‘Р¶РЅРѕ РѕРїСЂРµРґРµР»РёС‚СЊ, С‡С‚Рѕ РёРјРµРЅРЅРѕ РѕС‚РјРµРЅСЏС‚СЊ, РµСЃР»Рё, РЅР°РїСЂРёРјРµСЂ, С‚РѕР»СЊРєРѕ
+    С‡С‚Рѕ Р±С‹Р»Р° РґРѕР±Р°РІР»РµРЅР° РѕС‚РјРµС‚РєР° СЂС‹Р±С‹, Р° РґРѕ СЌС‚РѕРіРѕ - РїР°СЂР° СЌР»РµРєС‚СЂРѕРґРѕРІ). }
   TLastAction = (laNone, laCorner, laPair, laFish);
 
-  { Форма для разметки калибровочного кадра: углы аквариума (для
-    геометрической калибровки) и пары электродов (геометрия пар известна
-    пользователю точно; сопоставление пары->канал и полярность +/- внутри
-    пары - НЕТ, это решается позже отдельно по реальным амплитудам, см.
-    комментарий в Eod.ElectrodeLayout.TElectrodePairInput).
+  { Р¤РѕСЂРјР° РґР»СЏ СЂР°Р·РјРµС‚РєРё РєР°Р»РёР±СЂРѕРІРѕС‡РЅРѕРіРѕ РєР°РґСЂР°: СѓРіР»С‹ Р°РєРІР°СЂРёСѓРјР° (РґР»СЏ
+    РіРµРѕРјРµС‚СЂРёС‡РµСЃРєРѕР№ РєР°Р»РёР±СЂРѕРІРєРё) Рё РїР°СЂС‹ СЌР»РµРєС‚СЂРѕРґРѕРІ (РіРµРѕРјРµС‚СЂРёСЏ РїР°СЂ РёР·РІРµСЃС‚РЅР°
+    РїРѕР»СЊР·РѕРІР°С‚РµР»СЋ С‚РѕС‡РЅРѕ; СЃРѕРїРѕСЃС‚Р°РІР»РµРЅРёРµ РїР°СЂС‹->РєР°РЅР°Р» Рё РїРѕР»СЏСЂРЅРѕСЃС‚СЊ +/- РІРЅСѓС‚СЂРё
+    РїР°СЂС‹ - РќР•Рў, СЌС‚Рѕ СЂРµС€Р°РµС‚СЃСЏ РїРѕР·Р¶Рµ РѕС‚РґРµР»СЊРЅРѕ РїРѕ СЂРµР°Р»СЊРЅС‹Рј Р°РјРїР»РёС‚СѓРґР°Рј, СЃРј.
+    РєРѕРјРјРµРЅС‚Р°СЂРёР№ РІ Eod.ElectrodeLayout.TElectrodePairInput).
 
-    Согласно принятому в проекте подходу, у этой формы нет визуального
-    .fmx-ресурса - все элементы создаются в коде (см. AGENTS.md /
-    существующий пример Eod.SettingsForm). }
+    РЎРѕРіР»Р°СЃРЅРѕ РїСЂРёРЅСЏС‚РѕРјСѓ РІ РїСЂРѕРµРєС‚Рµ РїРѕРґС…РѕРґСѓ, Сѓ СЌС‚РѕР№ С„РѕСЂРјС‹ РЅРµС‚ РІРёР·СѓР°Р»СЊРЅРѕРіРѕ
+    .fmx-СЂРµСЃСѓСЂСЃР° - РІСЃРµ СЌР»РµРјРµРЅС‚С‹ СЃРѕР·РґР°СЋС‚СЃСЏ РІ РєРѕРґРµ (СЃРј. AGENTS.md /
+    СЃСѓС‰РµСЃС‚РІСѓСЋС‰РёР№ РїСЂРёРјРµСЂ Eod.SettingsForm). }
   TElectrodeLayoutForm = class(TForm)
   private
     FImageLayout: TLayout;
     FPaintBox: TPaintBox;
-    FBitmap: TBitmap; // загруженный калибровочный кадр (может быть nil)
+    FBitmap: TBitmap; // Р·Р°РіСЂСѓР¶РµРЅРЅС‹Р№ РєР°Р»РёР±СЂРѕРІРѕС‡РЅС‹Р№ РєР°РґСЂ (РјРѕР¶РµС‚ Р±С‹С‚СЊ nil)
     FStatusLabel: TLabel;
     FInstructionLabel: TLabel;
 
@@ -55,16 +55,16 @@ type
     FLayout: TElectrodeLayoutInput;
 
     FMode: TLayoutInputMode;
-    FCornersPlaced: Integer;       // 0..4 - сколько углов уже отмечено в текущем проходе
-    FHavePendingPairPoint: Boolean; // есть ли уже первая точка незавершённой пары
+    FCornersPlaced: Integer;       // 0..4 - СЃРєРѕР»СЊРєРѕ СѓРіР»РѕРІ СѓР¶Рµ РѕС‚РјРµС‡РµРЅРѕ РІ С‚РµРєСѓС‰РµРј РїСЂРѕС…РѕРґРµ
+    FHavePendingPairPoint: Boolean; // РµСЃС‚СЊ Р»Рё СѓР¶Рµ РїРµСЂРІР°СЏ С‚РѕС‡РєР° РЅРµР·Р°РІРµСЂС€С‘РЅРЅРѕР№ РїР°СЂС‹
     FPendingPairPoint: TPoint2D;
-    FHavePendingFishHead: Boolean; // есть ли уже точка "голова" незавершённой отметки рыбы
+    FHavePendingFishHead: Boolean; // РµСЃС‚СЊ Р»Рё СѓР¶Рµ С‚РѕС‡РєР° "РіРѕР»РѕРІР°" РЅРµР·Р°РІРµСЂС€С‘РЅРЅРѕР№ РѕС‚РјРµС‚РєРё СЂС‹Р±С‹
     FPendingFishHead: TPoint2D;
-    FLastAction: TLastAction; // для корректной работы "Отменить последнюю точку"
+    FLastAction: TLastAction; // РґР»СЏ РєРѕСЂСЂРµРєС‚РЅРѕР№ СЂР°Р±РѕС‚С‹ "РћС‚РјРµРЅРёС‚СЊ РїРѕСЃР»РµРґРЅСЋСЋ С‚РѕС‡РєСѓ"
 
-    { Масштаб и смещение отображения картинки внутри PaintBox (картинка
-      вписывается с сохранением пропорций - "letterbox"), нужны для
-      пересчёта координат клика в пиксели исходного изображения. }
+    { РњР°СЃС€С‚Р°Р± Рё СЃРјРµС‰РµРЅРёРµ РѕС‚РѕР±СЂР°Р¶РµРЅРёСЏ РєР°СЂС‚РёРЅРєРё РІРЅСѓС‚СЂРё PaintBox (РєР°СЂС‚РёРЅРєР°
+      РІРїРёСЃС‹РІР°РµС‚СЃСЏ СЃ СЃРѕС…СЂР°РЅРµРЅРёРµРј РїСЂРѕРїРѕСЂС†РёР№ - "letterbox"), РЅСѓР¶РЅС‹ РґР»СЏ
+      РїРµСЂРµСЃС‡С‘С‚Р° РєРѕРѕСЂРґРёРЅР°С‚ РєР»РёРєР° РІ РїРёРєСЃРµР»Рё РёСЃС…РѕРґРЅРѕРіРѕ РёР·РѕР±СЂР°Р¶РµРЅРёСЏ. }
     FDisplayScale: Single;
     FDisplayOffsetX, FDisplayOffsetY: Single;
 
@@ -99,8 +99,8 @@ procedure ShowElectrodeLayoutForm;
 implementation
 
 { ------------------------------------------------------------------ }
-{ Создание формы и элементов управления (без .fmx - см. заголовок     }
-{ модуля и комментарий в памяти проекта про Eod.SettingsForm).        }
+{ РЎРѕР·РґР°РЅРёРµ С„РѕСЂРјС‹ Рё СЌР»РµРјРµРЅС‚РѕРІ СѓРїСЂР°РІР»РµРЅРёСЏ (Р±РµР· .fmx - СЃРј. Р·Р°РіРѕР»РѕРІРѕРє     }
+{ РјРѕРґСѓР»СЏ Рё РєРѕРјРјРµРЅС‚Р°СЂРёР№ РІ РїР°РјСЏС‚Рё РїСЂРѕРµРєС‚Р° РїСЂРѕ Eod.SettingsForm).        }
 { ------------------------------------------------------------------ }
 
 constructor TElectrodeLayoutForm.Create(AOwner: TComponent);
@@ -129,7 +129,7 @@ var
 begin
   inherited CreateNew(AOwner);
 
-  Caption := 'Разметка электродов и аквариума';
+  Caption := 'Р Р°Р·РјРµС‚РєР° СЌР»РµРєС‚СЂРѕРґРѕРІ Рё Р°РєРІР°СЂРёСѓРјР°';
   Width := 1100;
   Height := 720;
   Position := TFormPosition.ScreenCenter;
@@ -145,7 +145,7 @@ begin
   FDisplayOffsetX := 0;
   FDisplayOffsetY := 0;
 
-  { --- Правая панель с кнопками и полями --- }
+  { --- РџСЂР°РІР°СЏ РїР°РЅРµР»СЊ СЃ РєРЅРѕРїРєР°РјРё Рё РїРѕР»СЏРјРё --- }
   ButtonsPanel := TLayout.Create(Self);
   ButtonsPanel.Parent := Self;
   ButtonsPanel.Align := TAlignLayout.Right;
@@ -157,14 +157,14 @@ begin
 
   Y := 0;
 
-  FBtnLoadImage := AddButton('Загрузить кадр...', BtnLoadImageClick);
+  FBtnLoadImage := AddButton('Р—Р°РіСЂСѓР·РёС‚СЊ РєР°РґСЂ...', BtnLoadImageClick);
 
   FLabelTankWidth := TLabel.Create(Self);
   FLabelTankWidth.Parent := ButtonsPanel;
   FLabelTankWidth.Position.X := 0;
   FLabelTankWidth.Position.Y := Y;
   FLabelTankWidth.Width := ButtonWidth;
-  FLabelTankWidth.Text := 'Ширина аквариума, см (необязательно):';
+  FLabelTankWidth.Text := 'РЁРёСЂРёРЅР° Р°РєРІР°СЂРёСѓРјР°, СЃРј (РЅРµРѕР±СЏР·Р°С‚РµР»СЊРЅРѕ):';
   Y := Y + 18;
 
   FEdTankWidth := TEdit.Create(Self);
@@ -181,7 +181,7 @@ begin
   FLabelTankHeight.Position.X := 0;
   FLabelTankHeight.Position.Y := Y;
   FLabelTankHeight.Width := ButtonWidth;
-  FLabelTankHeight.Text := 'Высота аквариума, см (необязательно):';
+  FLabelTankHeight.Text := 'Р’С‹СЃРѕС‚Р° Р°РєРІР°СЂРёСѓРјР°, СЃРј (РЅРµРѕР±СЏР·Р°С‚РµР»СЊРЅРѕ):';
   Y := Y + 18;
 
   FEdTankHeight := TEdit.Create(Self);
@@ -193,15 +193,15 @@ begin
   FEdTankHeight.Text := '';
   Y := Y + RowHeight + 8;
 
-  FBtnSetCorners := AddButton('Указать углы аквариума', BtnSetCornersClick);
-  FBtnAddPair := AddButton('Добавить пару электродов', BtnAddPairClick);
-  FBtnAddFish := AddButton('Отметить рыбу (голова+хвост)', BtnAddFishClick);
-  FBtnUndo := AddButton('Отменить последнюю точку', BtnUndoClick);
-  FBtnClearAll := AddButton('Очистить всё', BtnClearAllClick);
+  FBtnSetCorners := AddButton('РЈРєР°Р·Р°С‚СЊ СѓРіР»С‹ Р°РєРІР°СЂРёСѓРјР°', BtnSetCornersClick);
+  FBtnAddPair := AddButton('Р”РѕР±Р°РІРёС‚СЊ РїР°СЂСѓ СЌР»РµРєС‚СЂРѕРґРѕРІ', BtnAddPairClick);
+  FBtnAddFish := AddButton('РћС‚РјРµС‚РёС‚СЊ СЂС‹Р±Сѓ (РіРѕР»РѕРІР°+С…РІРѕСЃС‚)', BtnAddFishClick);
+  FBtnUndo := AddButton('РћС‚РјРµРЅРёС‚СЊ РїРѕСЃР»РµРґРЅСЋСЋ С‚РѕС‡РєСѓ', BtnUndoClick);
+  FBtnClearAll := AddButton('РћС‡РёСЃС‚РёС‚СЊ РІСЃС‘', BtnClearAllClick);
 
   Y := Y + 8;
-  FBtnExportJson := AddButton('Экспорт в JSON...', BtnExportJsonClick);
-  FBtnImportJson := AddButton('Импорт из JSON...', BtnImportJsonClick);
+  FBtnExportJson := AddButton('Р­РєСЃРїРѕСЂС‚ РІ JSON...', BtnExportJsonClick);
+  FBtnImportJson := AddButton('РРјРїРѕСЂС‚ РёР· JSON...', BtnImportJsonClick);
 
   Y := Y + 8;
   FPairsListBox := TListBox.Create(Self);
@@ -211,7 +211,7 @@ begin
   FPairsListBox.Width := ButtonWidth;
   FPairsListBox.Height := 200;
 
-  { --- Центральная область: картинка + статус --- }
+  { --- Р¦РµРЅС‚СЂР°Р»СЊРЅР°СЏ РѕР±Р»Р°СЃС‚СЊ: РєР°СЂС‚РёРЅРєР° + СЃС‚Р°С‚СѓСЃ --- }
   FImageLayout := TLayout.Create(Self);
   FImageLayout.Parent := Self;
   FImageLayout.Align := TAlignLayout.Client;
@@ -220,7 +220,7 @@ begin
   FStatusLabel.Parent := FImageLayout;
   FStatusLabel.Align := TAlignLayout.Top;
   FStatusLabel.Height := 24;
-  FStatusLabel.Text := 'Кадр не загружен.';
+  FStatusLabel.Text := 'РљР°РґСЂ РЅРµ Р·Р°РіСЂСѓР¶РµРЅ.';
 
   FInstructionLabel := TLabel.Create(Self);
   FInstructionLabel.Parent := FImageLayout;
@@ -246,7 +246,7 @@ begin
 end;
 
 { ------------------------------------------------------------------ }
-{ Отображение картинки и разметки                                     }
+{ РћС‚РѕР±СЂР°Р¶РµРЅРёРµ РєР°СЂС‚РёРЅРєРё Рё СЂР°Р·РјРµС‚РєРё                                     }
 { ------------------------------------------------------------------ }
 
 procedure TElectrodeLayoutForm.UpdateDisplayTransform;
@@ -261,8 +261,8 @@ begin
     Exit;
   end;
 
-  { Вписываем картинку в PaintBox с сохранением пропорций ("letterbox"),
-    аналогично тому, как это обычно делается для превью изображений. }
+  { Р’РїРёСЃС‹РІР°РµРј РєР°СЂС‚РёРЅРєСѓ РІ PaintBox СЃ СЃРѕС…СЂР°РЅРµРЅРёРµРј РїСЂРѕРїРѕСЂС†РёР№ ("letterbox"),
+    Р°РЅР°Р»РѕРіРёС‡РЅРѕ С‚РѕРјСѓ, РєР°Рє СЌС‚Рѕ РѕР±С‹С‡РЅРѕ РґРµР»Р°РµС‚СЃСЏ РґР»СЏ РїСЂРµРІСЊСЋ РёР·РѕР±СЂР°Р¶РµРЅРёР№. }
   ScaleX := FPaintBox.Width / FBitmap.Width;
   ScaleY := FPaintBox.Height / FBitmap.Height;
   FDisplayScale := Min(ScaleX, ScaleY);
@@ -331,7 +331,7 @@ begin
     Canvas.Fill.Color := TAlphaColorRec.Gray;
     Canvas.Font.Size := 14;
     Canvas.FillText(RectF(0, 0, FPaintBox.Width, FPaintBox.Height),
-      'Загрузите кадр (кнопка "Загрузить кадр...")', False, 1, [],
+      'Р—Р°РіСЂСѓР·РёС‚Рµ РєР°РґСЂ (РєРЅРѕРїРєР° "Р—Р°РіСЂСѓР·РёС‚СЊ РєР°РґСЂ...")', False, 1, [],
       TTextAlign.Center, TTextAlign.Center);
     Exit;
   end;
@@ -344,13 +344,13 @@ begin
   Canvas.DrawBitmap(FBitmap, RectF(0, 0, FBitmap.Width, FBitmap.Height),
     DestRect, 1, True);
 
-  { Углы аквариума, уже отмеченные - соединяем линией по порядку клика,
-    чтобы пользователь визуально видел получившийся четырёхугольник. }
+  { РЈРіР»С‹ Р°РєРІР°СЂРёСѓРјР°, СѓР¶Рµ РѕС‚РјРµС‡РµРЅРЅС‹Рµ - СЃРѕРµРґРёРЅСЏРµРј Р»РёРЅРёРµР№ РїРѕ РїРѕСЂСЏРґРєСѓ РєР»РёРєР°,
+    С‡С‚РѕР±С‹ РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ РІРёР·СѓР°Р»СЊРЅРѕ РІРёРґРµР» РїРѕР»СѓС‡РёРІС€РёР№СЃСЏ С‡РµС‚С‹СЂС‘С…СѓРіРѕР»СЊРЅРёРє. }
   if FCornersPlaced > 0 then
   begin
     for I := 0 to FCornersPlaced - 1 do
       DrawMarker(ToScreen(FLayout.TankCorners[I]), TAlphaColorRec.Yellow,
-        Format('Угол %d', [I + 1]));
+        Format('РЈРіРѕР» %d', [I + 1]));
 
     if FCornersPlaced >= 2 then
     begin
@@ -371,7 +371,7 @@ begin
     end;
   end;
 
-  { Уже сохранённые пары электродов. }
+  { РЈР¶Рµ СЃРѕС…СЂР°РЅС‘РЅРЅС‹Рµ РїР°СЂС‹ СЌР»РµРєС‚СЂРѕРґРѕРІ. }
   for I := 0 to High(FLayout.Pairs) do
   begin
     P1 := ToScreen(FLayout.Pairs[I].PointA);
@@ -382,17 +382,17 @@ begin
     Canvas.DrawLine(P1, P2, 1);
 
     DrawMarker(P1, PairColors[I mod Length(PairColors)],
-      Format('Пара %d', [I + 1]));
+      Format('РџР°СЂР° %d', [I + 1]));
     DrawMarker(P2, PairColors[I mod Length(PairColors)], '');
   end;
 
-  { Первая точка ещё не завершённой пары (курсор ждёт вторую точку). }
+  { РџРµСЂРІР°СЏ С‚РѕС‡РєР° РµС‰С‘ РЅРµ Р·Р°РІРµСЂС€С‘РЅРЅРѕР№ РїР°СЂС‹ (РєСѓСЂСЃРѕСЂ Р¶РґС‘С‚ РІС‚РѕСЂСѓСЋ С‚РѕС‡РєСѓ). }
   if FHavePendingPairPoint then
     DrawMarker(ToScreen(FPendingPairPoint), TAlphaColorRec.Magenta,
-      Format('Пара %d (1/2)', [Length(FLayout.Pairs) + 1]));
+      Format('РџР°СЂР° %d (1/2)', [Length(FLayout.Pairs) + 1]));
 
-  { Уже сохранённые отметки рыбы: линия голова->хвост, с подписями
-    "Г" (голова) и "Х" (хвост), чтобы не путать с электродами. }
+  { РЈР¶Рµ СЃРѕС…СЂР°РЅС‘РЅРЅС‹Рµ РѕС‚РјРµС‚РєРё СЂС‹Р±С‹: Р»РёРЅРёСЏ РіРѕР»РѕРІР°->С…РІРѕСЃС‚, СЃ РїРѕРґРїРёСЃСЏРјРё
+    "Р“" (РіРѕР»РѕРІР°) Рё "РҐ" (С…РІРѕСЃС‚), С‡С‚РѕР±С‹ РЅРµ РїСѓС‚Р°С‚СЊ СЃ СЌР»РµРєС‚СЂРѕРґР°РјРё. }
   for I := 0 to High(FLayout.FishMarks) do
   begin
     P1 := ToScreen(FLayout.FishMarks[I].HeadPoint);
@@ -402,18 +402,18 @@ begin
     Canvas.Stroke.Thickness := 2;
     Canvas.DrawLine(P1, P2, 1);
 
-    DrawMarker(P1, TAlphaColorRec.Cyan, Format('Рыба %d: Г', [I + 1]));
-    DrawMarker(P2, TAlphaColorRec.Cyan, 'Х');
+    DrawMarker(P1, TAlphaColorRec.Cyan, Format('Р С‹Р±Р° %d: Р“', [I + 1]));
+    DrawMarker(P2, TAlphaColorRec.Cyan, 'РҐ');
   end;
 
-  { Незавершённая отметка рыбы (уже кликнута голова, ждём хвост). }
+  { РќРµР·Р°РІРµСЂС€С‘РЅРЅР°СЏ РѕС‚РјРµС‚РєР° СЂС‹Р±С‹ (СѓР¶Рµ РєР»РёРєРЅСѓС‚Р° РіРѕР»РѕРІР°, Р¶РґС‘Рј С…РІРѕСЃС‚). }
   if FHavePendingFishHead then
     DrawMarker(ToScreen(FPendingFishHead), TAlphaColorRec.Cyan,
-      Format('Рыба %d: Г (ждём хвост)', [Length(FLayout.FishMarks) + 1]));
+      Format('Р С‹Р±Р° %d: Р“ (Р¶РґС‘Рј С…РІРѕСЃС‚)', [Length(FLayout.FishMarks) + 1]));
 end;
 
 { ------------------------------------------------------------------ }
-{ Обработка кликов                                                    }
+{ РћР±СЂР°Р±РѕС‚РєР° РєР»РёРєРѕРІ                                                    }
 { ------------------------------------------------------------------ }
 
 procedure TElectrodeLayoutForm.PaintBoxMouseDown(Sender: TObject;
@@ -426,7 +426,7 @@ begin
   if FMode = limNone then
     Exit;
   if not ScreenToImagePixel(X, Y, ImgX, ImgY) then
-    Exit; // клик мимо картинки - игнорируем
+    Exit; // РєР»РёРє РјРёРјРѕ РєР°СЂС‚РёРЅРєРё - РёРіРЅРѕСЂРёСЂСѓРµРј
 
   HandleImageClick(ImgX, ImgY);
 end;
@@ -441,7 +441,7 @@ begin
     limCorners:
       begin
         if FCornersPlaced >= 4 then
-          Exit; // на всякий случай - кнопка сама сбрасывает счётчик перед стартом
+          Exit; // РЅР° РІСЃСЏРєРёР№ СЃР»СѓС‡Р°Р№ - РєРЅРѕРїРєР° СЃР°РјР° СЃР±СЂР°СЃС‹РІР°РµС‚ СЃС‡С‘С‚С‡РёРє РїРµСЂРµРґ СЃС‚Р°СЂС‚РѕРј
 
         FLayout.TankCorners[FCornersPlaced] := TPoint2D.Create(ImgX, ImgY);
         Inc(FCornersPlaced);
@@ -501,7 +501,7 @@ begin
         end;
       end;
   else
-    ; // limNone - ничего не делаем
+    ; // limNone - РЅРёС‡РµРіРѕ РЅРµ РґРµР»Р°РµРј
   end;
 
   UpdateStatus;
@@ -509,7 +509,7 @@ begin
 end;
 
 { ------------------------------------------------------------------ }
-{ Кнопки                                                              }
+{ РљРЅРѕРїРєРё                                                              }
 { ------------------------------------------------------------------ }
 
 procedure TElectrodeLayoutForm.BtnLoadImageClick(Sender: TObject);
@@ -518,8 +518,8 @@ var
 begin
   D := TOpenDialog.Create(Self);
   try
-    D.Filter := 'Изображения (*.png;*.jpg;*.jpeg;*.bmp)|*.png;*.jpg;*.jpeg;*.bmp|Все файлы (*.*)|*.*';
-    D.Title := 'Загрузить калибровочный кадр';
+    D.Filter := 'РР·РѕР±СЂР°Р¶РµРЅРёСЏ (*.png;*.jpg;*.jpeg;*.bmp)|*.png;*.jpg;*.jpeg;*.bmp|Р’СЃРµ С„Р°Р№Р»С‹ (*.*)|*.*';
+    D.Title := 'Р—Р°РіСЂСѓР·РёС‚СЊ РєР°Р»РёР±СЂРѕРІРѕС‡РЅС‹Р№ РєР°РґСЂ';
     if not D.Execute then
       Exit;
 
@@ -543,7 +543,7 @@ procedure TElectrodeLayoutForm.BtnSetCornersClick(Sender: TObject);
 begin
   if not Assigned(FBitmap) then
   begin
-    ShowMessage('Сначала загрузите калибровочный кадр.');
+    ShowMessage('РЎРЅР°С‡Р°Р»Р° Р·Р°РіСЂСѓР·РёС‚Рµ РєР°Р»РёР±СЂРѕРІРѕС‡РЅС‹Р№ РєР°РґСЂ.');
     Exit;
   end;
 
@@ -562,14 +562,14 @@ procedure TElectrodeLayoutForm.BtnAddPairClick(Sender: TObject);
 begin
   if not Assigned(FBitmap) then
   begin
-    ShowMessage('Сначала загрузите калибровочный кадр.');
+    ShowMessage('РЎРЅР°С‡Р°Р»Р° Р·Р°РіСЂСѓР·РёС‚Рµ РєР°Р»РёР±СЂРѕРІРѕС‡РЅС‹Р№ РєР°РґСЂ.');
     Exit;
   end;
 
   if Length(FLayout.Pairs) >= EodChannelCount then
   begin
-    ShowMessage(Format('Уже указано максимальное число пар (%d). ' +
-      'Удалите лишнюю через "Очистить всё", если нужно переразметить.',
+    ShowMessage(Format('РЈР¶Рµ СѓРєР°Р·Р°РЅРѕ РјР°РєСЃРёРјР°Р»СЊРЅРѕРµ С‡РёСЃР»Рѕ РїР°СЂ (%d). ' +
+      'РЈРґР°Р»РёС‚Рµ Р»РёС€РЅСЋСЋ С‡РµСЂРµР· "РћС‡РёСЃС‚РёС‚СЊ РІСЃС‘", РµСЃР»Рё РЅСѓР¶РЅРѕ РїРµСЂРµСЂР°Р·РјРµС‚РёС‚СЊ.',
       [EodChannelCount]));
     Exit;
   end;
@@ -583,7 +583,7 @@ procedure TElectrodeLayoutForm.BtnAddFishClick(Sender: TObject);
 begin
   if not Assigned(FBitmap) then
   begin
-    ShowMessage('Сначала загрузите калибровочный кадр.');
+    ShowMessage('РЎРЅР°С‡Р°Р»Р° Р·Р°РіСЂСѓР·РёС‚Рµ РєР°Р»РёР±СЂРѕРІРѕС‡РЅС‹Р№ РєР°РґСЂ.');
     Exit;
   end;
 
@@ -594,8 +594,8 @@ end;
 
 procedure TElectrodeLayoutForm.BtnUndoClick(Sender: TObject);
 begin
-  { Незавершённая (ещё не сохранённая) точка - отменяем её в первую
-    очередь, это всегда самое недавнее действие. }
+  { РќРµР·Р°РІРµСЂС€С‘РЅРЅР°СЏ (РµС‰С‘ РЅРµ СЃРѕС…СЂР°РЅС‘РЅРЅР°СЏ) С‚РѕС‡РєР° - РѕС‚РјРµРЅСЏРµРј РµС‘ РІ РїРµСЂРІСѓСЋ
+    РѕС‡РµСЂРµРґСЊ, СЌС‚Рѕ РІСЃРµРіРґР° СЃР°РјРѕРµ РЅРµРґР°РІРЅРµРµ РґРµР№СЃС‚РІРёРµ. }
   if FHavePendingPairPoint then
   begin
     FHavePendingPairPoint := False;
@@ -606,9 +606,9 @@ begin
   end
   else
   begin
-    { Иначе отменяем последнее ЗАВЕРШЁННОЕ действие - используем
-      FLastAction, а не догадки по текущему режиму (FMode), так как
-      режим уже мог быть сброшен в limNone после завершения действия. }
+    { РРЅР°С‡Рµ РѕС‚РјРµРЅСЏРµРј РїРѕСЃР»РµРґРЅРµРµ Р—РђР’Р•Р РЁРЃРќРќРћР• РґРµР№СЃС‚РІРёРµ - РёСЃРїРѕР»СЊР·СѓРµРј
+      FLastAction, Р° РЅРµ РґРѕРіР°РґРєРё РїРѕ С‚РµРєСѓС‰РµРјСѓ СЂРµР¶РёРјСѓ (FMode), С‚Р°Рє РєР°Рє
+      СЂРµР¶РёРј СѓР¶Рµ РјРѕРі Р±С‹С‚СЊ СЃР±СЂРѕС€РµРЅ РІ limNone РїРѕСЃР»Рµ Р·Р°РІРµСЂС€РµРЅРёСЏ РґРµР№СЃС‚РІРёСЏ. }
     case FLastAction of
       laCorner:
         if FCornersPlaced > 0 then
@@ -631,7 +631,7 @@ begin
           FLastAction := laNone;
         end;
     else
-      ; // laNone или неизвестное состояние - отменять нечего
+      ; // laNone РёР»Рё РЅРµРёР·РІРµСЃС‚РЅРѕРµ СЃРѕСЃС‚РѕСЏРЅРёРµ - РѕС‚РјРµРЅСЏС‚СЊ РЅРµС‡РµРіРѕ
     end;
   end;
 
@@ -641,7 +641,7 @@ end;
 
 procedure TElectrodeLayoutForm.BtnClearAllClick(Sender: TObject);
 begin
-  if MessageDlg('Удалить всю текущую разметку (углы, все пары электродов и отметки рыбы)?',
+  if MessageDlg('РЈРґР°Р»РёС‚СЊ РІСЃСЋ С‚РµРєСѓС‰СѓСЋ СЂР°Р·РјРµС‚РєСѓ (СѓРіР»С‹, РІСЃРµ РїР°СЂС‹ СЌР»РµРєС‚СЂРѕРґРѕРІ Рё РѕС‚РјРµС‚РєРё СЂС‹Р±С‹)?',
     TMsgDlgType.mtConfirmation, [TMsgDlgBtn.mbYes, TMsgDlgBtn.mbNo], 0) <> mrYes then
     Exit;
 
@@ -668,14 +668,14 @@ begin
 
   D := TSaveDialog.Create(Self);
   try
-    D.Filter := 'JSON-файлы (*.json)|*.json';
+    D.Filter := 'JSON-С„Р°Р№Р»С‹ (*.json)|*.json';
     D.DefaultExt := 'json';
     D.FileName := 'electrode_layout.json';
     if not D.Execute then
       Exit;
 
     SaveElectrodeLayoutToJSON(FLayout, D.FileName);
-    ShowMessage('Сохранено: ' + D.FileName);
+    ShowMessage('РЎРѕС…СЂР°РЅРµРЅРѕ: ' + D.FileName);
   finally
     D.Free;
   end;
@@ -687,8 +687,8 @@ var
 begin
   D := TOpenDialog.Create(Self);
   try
-    D.Filter := 'JSON-файлы (*.json)|*.json';
-    D.Title := 'Импорт разметки электродов';
+    D.Filter := 'JSON-С„Р°Р№Р»С‹ (*.json)|*.json';
+    D.Title := 'РРјРїРѕСЂС‚ СЂР°Р·РјРµС‚РєРё СЌР»РµРєС‚СЂРѕРґРѕРІ';
     if not D.Execute then
       Exit;
 
@@ -699,9 +699,9 @@ begin
     FHavePendingFishHead := False;
     FLastAction := laNone;
 
-    { Поля размера аквариума показываем пустыми, если размер не задан
-      (0 - см. комментарий у TankWidthCm/TankHeightCm), а не как "0",
-      чтобы не создавать впечатление, что ноль - это реальное значение. }
+    { РџРѕР»СЏ СЂР°Р·РјРµСЂР° Р°РєРІР°СЂРёСѓРјР° РїРѕРєР°Р·С‹РІР°РµРј РїСѓСЃС‚С‹РјРё, РµСЃР»Рё СЂР°Р·РјРµСЂ РЅРµ Р·Р°РґР°РЅ
+      (0 - СЃРј. РєРѕРјРјРµРЅС‚Р°СЂРёР№ Сѓ TankWidthCm/TankHeightCm), Р° РЅРµ РєР°Рє "0",
+      С‡С‚РѕР±С‹ РЅРµ СЃРѕР·РґР°РІР°С‚СЊ РІРїРµС‡Р°С‚Р»РµРЅРёРµ, С‡С‚Рѕ РЅРѕР»СЊ - СЌС‚Рѕ СЂРµР°Р»СЊРЅРѕРµ Р·РЅР°С‡РµРЅРёРµ. }
     if FLayout.TankWidthCm > 0 then
       FEdTankWidth.Text := FormatFloat('0.##', FLayout.TankWidthCm)
     else
@@ -711,16 +711,16 @@ begin
     else
       FEdTankHeight.Text := '';
 
-    { Картинку из JSON мы не загружаем автоматически (в файле хранится
-      только имя, не сами байты) - если координаты относятся не к тому
-      кадру, что сейчас на экране, они всё равно будут в пиксельных
-      координатах правильного (исходного для этой разметки) кадра, и
-      отображение на ДРУГОЙ картинке будет искажено. Предупреждаем. }
+    { РљР°СЂС‚РёРЅРєСѓ РёР· JSON РјС‹ РЅРµ Р·Р°РіСЂСѓР¶Р°РµРј Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё (РІ С„Р°Р№Р»Рµ С…СЂР°РЅРёС‚СЃСЏ
+      С‚РѕР»СЊРєРѕ РёРјСЏ, РЅРµ СЃР°РјРё Р±Р°Р№С‚С‹) - РµСЃР»Рё РєРѕРѕСЂРґРёРЅР°С‚С‹ РѕС‚РЅРѕСЃСЏС‚СЃСЏ РЅРµ Рє С‚РѕРјСѓ
+      РєР°РґСЂСѓ, С‡С‚Рѕ СЃРµР№С‡Р°СЃ РЅР° СЌРєСЂР°РЅРµ, РѕРЅРё РІСЃС‘ СЂР°РІРЅРѕ Р±СѓРґСѓС‚ РІ РїРёРєСЃРµР»СЊРЅС‹С…
+      РєРѕРѕСЂРґРёРЅР°С‚Р°С… РїСЂР°РІРёР»СЊРЅРѕРіРѕ (РёСЃС…РѕРґРЅРѕРіРѕ РґР»СЏ СЌС‚РѕР№ СЂР°Р·РјРµС‚РєРё) РєР°РґСЂР°, Рё
+      РѕС‚РѕР±СЂР°Р¶РµРЅРёРµ РЅР° Р”Р РЈР“РћР™ РєР°СЂС‚РёРЅРєРµ Р±СѓРґРµС‚ РёСЃРєР°Р¶РµРЅРѕ. РџСЂРµРґСѓРїСЂРµР¶РґР°РµРј. }
     if Assigned(FBitmap) and (FLayout.SourceImageFile <> '') and
        (ExtractFileName(FLayout.SourceImageFile) <> '') then
-      ShowMessage('Загружена разметка для кадра "' + FLayout.SourceImageFile +
-        '". Если сейчас открыт другой кадр, загрузите правильный ' +
-        'через "Загрузить кадр...", иначе точки будут показаны неверно.');
+      ShowMessage('Р—Р°РіСЂСѓР¶РµРЅР° СЂР°Р·РјРµС‚РєР° РґР»СЏ РєР°РґСЂР° "' + FLayout.SourceImageFile +
+        '". Р•СЃР»Рё СЃРµР№С‡Р°СЃ РѕС‚РєСЂС‹С‚ РґСЂСѓРіРѕР№ РєР°РґСЂ, Р·Р°РіСЂСѓР·РёС‚Рµ РїСЂР°РІРёР»СЊРЅС‹Р№ ' +
+        'С‡РµСЂРµР· "Р—Р°РіСЂСѓР·РёС‚СЊ РєР°РґСЂ...", РёРЅР°С‡Рµ С‚РѕС‡РєРё Р±СѓРґСѓС‚ РїРѕРєР°Р·Р°РЅС‹ РЅРµРІРµСЂРЅРѕ.');
 
     RefreshPairsList;
     UpdateStatus;
@@ -731,7 +731,7 @@ begin
 end;
 
 { ------------------------------------------------------------------ }
-{ Вспомогательное                                                     }
+{ Р’СЃРїРѕРјРѕРіР°С‚РµР»СЊРЅРѕРµ                                                     }
 { ------------------------------------------------------------------ }
 
 procedure TElectrodeLayoutForm.ReadTankSizeFromEdits;
@@ -752,7 +752,7 @@ begin
   FPairsListBox.Items.Clear;
   for I := 0 to High(FLayout.Pairs) do
   begin
-    S := Format('Пара %d', [I + 1]);
+    S := Format('РџР°СЂР° %d', [I + 1]);
     if FLayout.Pairs[I].Label_ <> '' then
       S := S + ': ' + FLayout.Pairs[I].Label_;
     FPairsListBox.Items.Add(S);
@@ -762,29 +762,29 @@ end;
 procedure TElectrodeLayoutForm.UpdateStatus;
 begin
   FStatusLabel.Text := Format(
-    'Углы аквариума: %d/4.  Пар электродов указано: %d/%d.  Отметок рыбы: %d.',
+    'РЈРіР»С‹ Р°РєРІР°СЂРёСѓРјР°: %d/4.  РџР°СЂ СЌР»РµРєС‚СЂРѕРґРѕРІ СѓРєР°Р·Р°РЅРѕ: %d/%d.  РћС‚РјРµС‚РѕРє СЂС‹Р±С‹: %d.',
     [FCornersPlaced, Length(FLayout.Pairs), EodChannelCount, Length(FLayout.FishMarks)]);
 
   case FMode of
     limCorners:
       FInstructionLabel.Text := Format(
-        'Кликните угол %d из 4 (по порядку обхода периметра).',
+        'РљР»РёРєРЅРёС‚Рµ СѓРіРѕР» %d РёР· 4 (РїРѕ РїРѕСЂСЏРґРєСѓ РѕР±С…РѕРґР° РїРµСЂРёРјРµС‚СЂР°).',
         [FCornersPlaced + 1]);
     limPair:
       if FHavePendingPairPoint then
-        FInstructionLabel.Text := 'Кликните второй контакт этой же пары.'
+        FInstructionLabel.Text := 'РљР»РёРєРЅРёС‚Рµ РІС‚РѕСЂРѕР№ РєРѕРЅС‚Р°РєС‚ СЌС‚РѕР№ Р¶Рµ РїР°СЂС‹.'
       else
         FInstructionLabel.Text := Format(
-          'Кликните первый контакт пары %d (два контакта одного дифференциального входа).',
+          'РљР»РёРєРЅРёС‚Рµ РїРµСЂРІС‹Р№ РєРѕРЅС‚Р°РєС‚ РїР°СЂС‹ %d (РґРІР° РєРѕРЅС‚Р°РєС‚Р° РѕРґРЅРѕРіРѕ РґРёС„С„РµСЂРµРЅС†РёР°Р»СЊРЅРѕРіРѕ РІС…РѕРґР°).',
           [Length(FLayout.Pairs) + 1]);
     limFish:
       if FHavePendingFishHead then
-        FInstructionLabel.Text := 'Кликните хвост той же рыбы.'
+        FInstructionLabel.Text := 'РљР»РёРєРЅРёС‚Рµ С…РІРѕСЃС‚ С‚РѕР№ Р¶Рµ СЂС‹Р±С‹.'
       else
-        FInstructionLabel.Text := 'Кликните голову рыбы.';
+        FInstructionLabel.Text := 'РљР»РёРєРЅРёС‚Рµ РіРѕР»РѕРІСѓ СЂС‹Р±С‹.';
   else
     FInstructionLabel.Text :=
-      'Выберите действие: "Указать углы аквариума", "Добавить пару электродов" или "Отметить рыбу".';
+      'Р’С‹Р±РµСЂРёС‚Рµ РґРµР№СЃС‚РІРёРµ: "РЈРєР°Р·Р°С‚СЊ СѓРіР»С‹ Р°РєРІР°СЂРёСѓРјР°", "Р”РѕР±Р°РІРёС‚СЊ РїР°СЂСѓ СЌР»РµРєС‚СЂРѕРґРѕРІ" РёР»Рё "РћС‚РјРµС‚РёС‚СЊ СЂС‹Р±Сѓ".';
   end;
 end;
 

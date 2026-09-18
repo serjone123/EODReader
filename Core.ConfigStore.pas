@@ -1,4 +1,4 @@
-unit Core.ConfigStore;
+﻿unit Core.ConfigStore;
 
 { Persists TEodDetectorConfig (Core.Types) to/from a small JSON file, so
   detector settings survive an application restart. }

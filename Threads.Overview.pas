@@ -1,4 +1,4 @@
-unit Threads.Overview;
+п»їunit Threads.Overview;
 
 interface
 
@@ -14,8 +14,8 @@ type
     TotalFrames: Int64; Canceled: Boolean;
     const ErrorText: string) of object;
 
-  { Построение обзорной огибающей WAV. Отмену, тексты ошибок и вызов
-    DoFinished (в главном потоке) обеспечивает TEodBackgroundThread. }
+  { РџРѕСЃС‚СЂРѕРµРЅРёРµ РѕР±Р·РѕСЂРЅРѕР№ РѕРіРёР±Р°СЋС‰РµР№ WAV. РћС‚РјРµРЅСѓ, С‚РµРєСЃС‚С‹ РѕС€РёР±РѕРє Рё РІС‹Р·РѕРІ
+    DoFinished (РІ РіР»Р°РІРЅРѕРј РїРѕС‚РѕРєРµ) РѕР±РµСЃРїРµС‡РёРІР°РµС‚ TEodBackgroundThread. }
   TEodOverviewThread = class(TEodBackgroundThread)
   private
     FFile1: string;
@@ -103,13 +103,13 @@ begin
     FTotalFrames := TotalFrames;
 
     if TotalFrames <= 0 then
-      raise Exception.Create('Источник не содержит кадров (TotalFrames <= 0)');
+      raise Exception.Create('РСЃС‚РѕС‡РЅРёРє РЅРµ СЃРѕРґРµСЂР¶РёС‚ РєР°РґСЂРѕРІ (TotalFrames <= 0)');
 
     N := FPoints;
     if TotalFrames < N then
       N := Integer(TotalFrames);
     if N < 1 then
-      raise Exception.Create('Некорректное количество точек обзора');
+      raise Exception.Create('РќРµРєРѕСЂСЂРµРєС‚РЅРѕРµ РєРѕР»РёС‡РµСЃС‚РІРѕ С‚РѕС‡РµРє РѕР±Р·РѕСЂР°');
 
     SetLength(FOverviewMin, N);
     SetLength(FOverviewMax, N);
@@ -209,7 +209,7 @@ begin
     FProcessed := TotalFrames;
     TThread.Synchronize(Self, DoProgress);
   finally
-    { Источник освобождаем до DoFinished (который вызывает база), как и раньше. }
+    { РСЃС‚РѕС‡РЅРёРє РѕСЃРІРѕР±РѕР¶РґР°РµРј РґРѕ DoFinished (РєРѕС‚РѕСЂС‹Р№ РІС‹Р·С‹РІР°РµС‚ Р±Р°Р·Р°), РєР°Рє Рё СЂР°РЅСЊС€Рµ. }
     Source.Free;
   end;
 end;
