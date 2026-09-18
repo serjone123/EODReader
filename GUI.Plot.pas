@@ -33,13 +33,59 @@ const
     TAlphaColorRec.Orange);
 
 type
-  { Поканальные min/max огибающие; индекс 0..3 — канал 1..4. }
-//  TChannelEnvelopes = array[0..3] of TFloatArray;
+  { Общий предок TOverviewPlot и TSignalPlot.
 
-  TOverviewPlot = class
-  private
+    Оба класса владеют TPaintBox, рисуют себя через переопределяемый
+    RenderPlot(Canvas, ARect) и должны уметь:
+      1) рендерить себя в оффскрин-битмап произвольного размера —
+         RenderToBitmap. Сейчас это нужно TOverviewPlot для покадрового
+         рендера видео-полосы (Video.OverlayRenderer.pas); после переноса
+         сюда тем же методом сможет пользоваться и TSignalPlot — для
+         будущего покадрового экспорта анимации основного графика по
+         тому же принципу, без повторной реализации;
+      2) показывать по правому клику одинаковое контекстное меню
+         (Copy / Save to file...). Раньше это было только у TSignalPlot;
+         TOverviewPlot такого меню не имел вовсе. }
+  TPlotBase = class abstract
+  protected
     FPaintBox: TPaintBox;
+    FPopupMenu: TPopupMenu;
 
+    { Рисует текущее состояние в ARect произвольного холста Canvas.
+      Используется и на экране (PaintBoxPaint), и при рендере в
+      оффскрин-битмап (RenderToBitmap) — реализация НЕ должна
+      подставлять размеры/координаты FPaintBox вместо переданного ARect. }
+    procedure RenderPlot(Canvas: TCanvas; const ARect: TRectF); virtual; abstract;
+
+    procedure PaintBoxPaint(Sender: TObject; Canvas: TCanvas);
+
+    { Наполняет FPopupMenu перед показом. Базовая реализация добавляет
+      Copy/Save to file; потомок может дополнить список, переопределив
+      метод и вызвав inherited. }
+    procedure BuildContextMenu; virtual;
+
+    procedure CopyToClipboard(Sender: TObject);
+    procedure SaveViewToFile(Sender: TObject);
+
+    { Общий обработчик правого клика для PaintBoxMouseDown потомков. }
+    procedure HandleRightClick;
+  public
+    constructor Create(APaintBox: TPaintBox);
+    destructor Destroy; override;
+
+    { Рендерит текущее состояние (данные + текущий вид) в новый
+      оффскрин TBitmap заданного размера, без привязки к размеру
+      реального TPaintBox на экране. Владение результатом переходит
+      к вызывающему коду — он обязан освободить TBitmap. }
+    function RenderToBitmap(AWidth, AHeight: Integer): TBitmap;
+
+    { То же самое, но в размер текущего PaintBox — тот же кадр, что
+      виден на экране. Используется для Copy/Save в контекстном меню. }
+    function GetPlotAsBitmap: TBitmap;
+  end;
+
+  TOverviewPlot = class(TPlotBase)
+  private
     FMinValues: TFloatArray;
     FMaxValues: TFloatArray;
 
@@ -65,8 +111,6 @@ type
     FDragStartFrame: Int64;
     FDragCurrentFrame: Int64;
 
-    procedure RenderPlot(Canvas: TCanvas; const AOuterRect: TRectF);
-    procedure PaintBoxPaint(Sender: TObject; Canvas: TCanvas);
     procedure PaintBoxMouseDown(Sender: TObject;
       Button: TMouseButton; Shift: TShiftState; X, Y: Single);
     procedure PaintBoxMouseMove(Sender: TObject;
@@ -83,10 +127,10 @@ type
     procedure SetShowChannelColors(AValue: Boolean);
     function GetHasChannelData: Boolean;
     procedure DrawChannelEnvelopes(Canvas: TCanvas; const R: TRectF);
-
+  protected
+    procedure RenderPlot(Canvas: TCanvas; const AOuterRect: TRectF); override;
   public
     constructor Create(APaintBox: TPaintBox);
-    destructor Destroy; override;
 
     procedure Clear;
 
@@ -103,13 +147,6 @@ type
 
     procedure SetViewRange(AStart, AEnd: Int64);
 
-    { Рендерит текущее состояние графика (данные + FViewStart/FViewEnd) в
-      новый offscreen TBitmap заданного размера, без привязки к реальному
-      TPaintBox. Используется для покадрового экспорта видео обзорной
-      полосы (см. Video.OverlayRenderer.pas). Владение результатом
-      переходит к вызывающему коду — он обязан освободить TBitmap. }
-    function RenderToBitmap(AWidth, AHeight: Integer): TBitmap;
-
     { Рисовать обзор поканально, в EodChannelColors. Если поканальных
       данных нет (HasChannelData = False), рисуется обычная огибающая. }
     property ChannelColors: Boolean
@@ -122,10 +159,8 @@ type
       read FOnRangeSelected write FOnRangeSelected;
   end;
 
-  TSignalPlot = class
+  TSignalPlot = class(TPlotBase)
   private
-    FPaintBox: TPaintBox;
-    PopupMenuImg: TPopupMenu;
     FData: TAudioChunk;
     FStd: TFloatArray;
     FFir: TFloatArray;
@@ -163,7 +198,6 @@ type
       Canvas: TCanvas;
       const R: TRectF);
 
-    procedure PaintBoxPaint(Sender: TObject; Canvas: TCanvas);
     procedure PaintBoxMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Single);
     procedure PaintBoxMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Single);
     procedure PaintBoxMouseUp(Sender: TObject; Button: TMouseButton; Shift: TShiftState; X, Y: Single);
@@ -196,13 +230,10 @@ type
     procedure ClampView;
     procedure DoViewChanged;
     function ViewWidth: Int64;
-    function GetPlotAsBitmap: TBitmap;
-    procedure CopyIMG(Sender: TObject);
-    procedure SaveToFile(const AFileName: string);
-    procedure RenderPlot(Canvas: TCanvas; const ARect: TRectF);
+  protected
+    procedure RenderPlot(Canvas: TCanvas; const ARect: TRectF);  override;
   public
     constructor Create(APaintBox: TPaintBox);
-    destructor Destroy; override;
     procedure ClearData;
     procedure SetChannels(const Data: TAudioChunk; StartFrame: Int64;
       SampleRate: Integer; PeakFrame: Int64 = -1;
@@ -237,38 +268,33 @@ const
 implementation
 
 uses
-  FMX.Platform, System.Rtti;
+  FMX.Platform, System.Rtti, FMX.Dialogs;
 
-constructor TSignalPlot.Create(APaintBox: TPaintBox);
+function AddMenuItem(PM: TPopupMenu; AText: string; AAction: TNotifyEvent): TMenuItem;
+begin
+  Result := TMenuItem.Create(PM);
+  Result.Parent := PM;
+  Result.Text := AText;
+  Result.OnClick := AAction;
+end;
+
+{ TPlotBase }
+
+constructor TPlotBase.Create(APaintBox: TPaintBox);
 begin
   inherited Create;
   if not Assigned(APaintBox) then
-    raise EArgumentNilException.Create('TSignalPlot requires a TPaintBox');
+    raise EArgumentNilException.CreateFmt('%s requires a TPaintBox', [ClassName]);
+
   FPaintBox := APaintBox;
   FPaintBox.OnPaint := PaintBoxPaint;
-  FPaintBox.OnMouseDown := PaintBoxMouseDown;
-  FPaintBox.OnMouseMove := PaintBoxMouseMove;
-  FPaintBox.OnMouseUp := PaintBoxMouseUp;
-  FPaintBox.OnMouseWheel := PaintBoxMouseWheel;
   FPaintBox.HitTest := True;
-  FMode := pmRaw;
-  FSampleRate := 1;
-  FSelectedOffset := -1;
-  FPeakOffset := -1;
-  FHistogramStart := 0;
-  FHistogramEnd := -1;
-  FFullStart := 0;
-  FFullEnd := 0;
-  FViewStart := 0;
-  FViewEnd := 0;
-  FMaxView := MaxViewSamples;
-//  FLastMouseX := 0;
-  FLastMouseX := FPaintBox.Width / 2 ;
-  PopupMenuImg:= TPopupMenu.Create(APaintBox);
-  PopupMenuImg.Parent:= APaintBox;
+
+  FPopupMenu := TPopupMenu.Create(APaintBox);
+  FPopupMenu.Parent := APaintBox;
 end;
 
-destructor TSignalPlot.Destroy;
+destructor TPlotBase.Destroy;
 begin
   if Assigned(FPaintBox) then
   begin
@@ -281,6 +307,110 @@ begin
 
   FPaintBox := nil;
   inherited;
+end;
+
+procedure TPlotBase.PaintBoxPaint(Sender: TObject; Canvas: TCanvas);
+begin
+  RenderPlot(Canvas, FPaintBox.LocalRect);
+end;
+
+function TPlotBase.RenderToBitmap(AWidth, AHeight: Integer): TBitmap;
+begin
+  Result := TBitmap.Create(AWidth, AHeight);
+  try
+    if Result.Canvas.BeginScene then
+    try
+      RenderPlot(Result.Canvas, RectF(0, 0, AWidth, AHeight));
+    finally
+      Result.Canvas.EndScene;
+    end;
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
+function TPlotBase.GetPlotAsBitmap: TBitmap;
+begin
+  Result := RenderToBitmap(Round(FPaintBox.Width), Round(FPaintBox.Height));
+end;
+
+procedure TPlotBase.BuildContextMenu;
+var
+  I: Integer;
+begin
+  for I := FPopupMenu.ItemsCount - 1 downto 0 do
+    FPopupMenu.Items[I].Free;
+
+  AddMenuItem(FPopupMenu, 'Copy', CopyToClipboard);
+  AddMenuItem(FPopupMenu, 'Save to file...', SaveViewToFile);
+end;
+
+procedure TPlotBase.CopyToClipboard(Sender: TObject);
+var
+  Svc: IFMXClipboardService;
+  Bmp: TBitmap;
+begin
+  if TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Svc) then
+  begin
+    Bmp := GetPlotAsBitmap;
+    try
+      Svc.SetClipboard(Bmp);
+    finally
+      Bmp.Free;
+    end;
+  end;
+end;
+
+procedure TPlotBase.SaveViewToFile(Sender: TObject);
+var
+  D: TSaveDialog;
+  Bmp: TBitmap;
+begin
+  D := TSaveDialog.Create(nil);
+  try
+    D.Filter := 'PNG image (*.png)|*.png|Bitmap (*.bmp)|*.bmp';
+    D.DefaultExt := 'png';
+    D.FileName := 'plot.png';
+    if not D.Execute then
+      Exit;
+
+    Bmp := GetPlotAsBitmap;
+    try
+      Bmp.SaveToFile(D.FileName);
+    finally
+      Bmp.Free;
+    end;
+  finally
+    D.Free;
+  end;
+end;
+
+procedure TPlotBase.HandleRightClick;
+begin
+  BuildContextMenu;
+  FPopupMenu.Popup(Screen.MousePos.X, Screen.MousePos.Y);
+end;
+
+constructor TSignalPlot.Create(APaintBox: TPaintBox);
+begin
+  inherited Create(APaintBox);
+  FPaintBox.OnMouseDown := PaintBoxMouseDown;
+  FPaintBox.OnMouseMove := PaintBoxMouseMove;
+  FPaintBox.OnMouseUp := PaintBoxMouseUp;
+  FPaintBox.OnMouseWheel := PaintBoxMouseWheel;
+  FMode := pmRaw;
+  FSampleRate := 1;
+  FSelectedOffset := -1;
+  FPeakOffset := -1;
+  FHistogramStart := 0;
+  FHistogramEnd := -1;
+  FFullStart := 0;
+  FFullEnd := 0;
+  FViewStart := 0;
+  FViewEnd := 0;
+  FMaxView := MaxViewSamples;
+  FLastMouseX := FPaintBox.Width / 2;
 end;
 
 procedure TSignalPlot.RequestRepaint;
@@ -310,25 +440,6 @@ end;
 function TSignalPlot.GetMode: TPlotMode;
 begin
   Result := FMode;
-end;
-
-function TSignalPlot.GetPlotAsBitmap: TBitmap;
-begin
-  // Создаем битмап по размеру PaintBox
-  Result := TBitmap.Create(Round(FPaintBox.Width), Round(FPaintBox.Height));
-  try
-    if Result.Canvas.BeginScene then
-    try
-      Result.Canvas.Clear(TAlphaColorRec.White); // Задаем белый фон
-      RenderPlot(Result.Canvas, TRectF.Create(0, 0, Result.Width, Result.Height));
-    finally
-      Result.Canvas.EndScene;
-    end;
-  except
-    // Если что-то пошло не так, освобождаем память и пробрасываем ошибку дальше
-    Result.Free;
-    raise;
-  end;
 end;
 
 procedure TSignalPlot.SetMode(AMode: TPlotMode);
@@ -415,55 +526,6 @@ begin
   Result := ViewSampleCount;
 end;
 
-//procedure TSignalPlot.ClampView;
-//var
-//  W, Center: Int64;
-//begin
-//  W := FViewEnd - FViewStart;
-//
-//  { Limit minimum width }
-//  if W < MinViewSamples then
-//  begin
-//    Center := (FViewStart + FViewEnd) div 2;
-//    W := MinViewSamples;
-//    FViewStart := Center - W div 2;
-//    FViewEnd := FViewStart + W;
-//  end;
-//
-//  { Limit maximum width — prevents OOM when zooming out }
-//  if W > MaxViewSamples then
-//  begin
-//    Center := (FViewStart + FViewEnd) div 2;
-//    W := MaxViewSamples;
-//    FViewStart := Center - W div 2;
-//    FViewEnd := FViewStart + W;
-//  end;
-//
-//  { Clamp to file bounds }
-//  if FViewStart < FFullStart then
-//  begin
-//    FViewStart := FFullStart;
-//    FViewEnd := FViewStart + W;
-//  end;
-//
-//  if FViewEnd > FFullEnd then
-//  begin
-//    FViewEnd := FFullEnd;
-//    FViewStart := FViewEnd - W;
-//    if FViewStart < FFullStart then
-//      FViewStart := FFullStart;
-//  end;
-//
-//  { Final safety clamp }
-//  if FViewStart < FFullStart then
-//    FViewStart := FFullStart;
-//  if FViewEnd > FFullEnd then
-//    FViewEnd := FFullEnd;
-//  if FViewEnd - FViewStart < MinViewSamples then
-//    FViewEnd := FViewStart + MinViewSamples;
-//  if FViewEnd > FFullEnd then
-//    FViewEnd := FFullEnd;
-//end;
 procedure TSignalPlot.ClampView;
 var
   FullWidth: Int64;
@@ -541,45 +603,6 @@ begin
     FOnViewChanged(Self, FViewStart, FViewEnd);
 end;
 
-//procedure TSignalPlot.ZoomAt(AX: Single; AFactor: Double);
-//var
-//  R: TRectF;
-//  PlotWidth: Single;
-//  SampleUnderCursor: Double;
-//  NewWidth: Double;
-//  NewStart: Double;
-//begin
-//  if (FFullEnd <= FFullStart) or (AFactor <= 0) then
-//    Exit;
-//
-//  R := RectF(0, 0, FPaintBox.Width, FPaintBox.Height);
-//  PlotWidth := R.Width;
-//  if PlotWidth <= 0 then
-//    Exit;
-//
-//  if (AX < 0) or (AX > PlotWidth) then
-//    AX := PlotWidth / 2;
-//
-//  if (FViewEnd > FViewStart) then
-//    SampleUnderCursor := FViewStart + (AX / PlotWidth) * (FViewEnd - FViewStart)
-//  else
-//    SampleUnderCursor := FViewStart;
-//
-//  NewWidth := (FViewEnd - FViewStart) * AFactor;
-//  if NewWidth < MinViewSamples then
-//    NewWidth := MinViewSamples;
-//  if NewWidth > MaxViewSamples then
-//    NewWidth := MaxViewSamples;
-//
-//  NewStart := SampleUnderCursor - (AX / PlotWidth) * NewWidth;
-//
-//  FViewStart := Round(NewStart);
-//  FViewEnd := FViewStart + Round(NewWidth);
-//
-//  ClampView;
-//  RequestRepaint;
-//  DoViewChanged;
-//end;
 procedure TSignalPlot.ZoomAt(
   AX: Single;
   AFactor: Double);
@@ -705,68 +728,22 @@ begin
 end;
 
 { ------------------------------------------------------------------ }
-{  Menu                                                    }
-{ ------------------------------------------------------------------ }
-procedure TSignalPlot.CopyIMG(Sender: TObject);
-var
-  Svc: IFMXClipboardService;
-  Bmp: TBitmap;
-begin
-  if TPlatformServices.Current.SupportsPlatformService(IFMXClipboardService, Svc) then
-  begin
-    Bmp := GetPlotAsBitmap; // Получаем готовый кадр
-    try
-      Svc.SetClipboard(Bmp);
-    finally
-      Bmp.Free;
-    end;
-  end;
-end;
-
-procedure TSignalPlot.SaveToFile(const AFileName: string);
-var
-  Bmp: TBitmap;
-begin
-  Bmp := GetPlotAsBitmap; // Получаем готовый кадр
-  try
-    Bmp.SaveToFile(AFileName);
-  finally
-    Bmp.Free;
-  end;
-end;
-{ ------------------------------------------------------------------ }
 {  Mouse handlers                                                    }
 { ------------------------------------------------------------------ }
-
-function AddMenuItem(PM: TPopupMenu; AText: string; AAction: TNotifyEvent):TMenuItem;
-begin
-  result := TMenuItem.Create(PM)  ;
-  result.Parent:= PM;
-  result.Text:=AText ;
-  result.OnClick:=AAction ;
-end;
 
 procedure TSignalPlot.PaintBoxMouseDown(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Single);
 begin
   if Button = TMouseButton.mbLeft then
-    begin
-      FDragging := True;
-      FDragStartX := X;
-      FDragStartViewStart := FViewStart;
-      FDragStartViewEnd := FViewEnd;
-      FLastMouseX := X
-    end
-  else  if Button = TMouseButton.mbRight then
-    begin
-      for var I := 0 to PopupMenuImg.ItemsCount-1  do
-        begin
-          PopupMenuImg.Items[0].Free ;
-        end;
-
-      AddMenuItem(PopupMenuImg, 'Copy ', CopyIMG);
-      PopupMenuImg.Popup(Screen.MousePos.x, Screen.MousePos.y)
-    end;
+  begin
+    FDragging := True;
+    FDragStartX := X;
+    FDragStartViewStart := FViewStart;
+    FDragStartViewEnd := FViewEnd;
+    FLastMouseX := X;
+  end
+  else if Button = TMouseButton.mbRight then
+    HandleRightClick;
 
 end;
 
@@ -1442,16 +1419,24 @@ var
   PlotTitle: string;
   MaxAbs: Double;
 begin
-  FullR := RectF(0, 0, FPaintBox.Width, FPaintBox.Height);
+  { ВАЖНО: раньше здесь везде использовался FPaintBox.Width/Height,
+    из-за чего параметр ARect фактически игнорировался — RenderPlot
+    всегда рисовал в размер экранного PaintBox, а не в размер холста,
+    который ему на самом деле передали. На экране (PaintBoxPaint) это
+    не давало ошибки — там ARect и так всегда равен размеру PaintBox,
+    но делало метод непригодным для рендера в bitmap произвольного
+    размера (RenderToBitmap), что нужно для будущего покадрового
+    экспорта анимации основного графика. Теперь везде ниже — ARect. }
+  FullR := ARect;
   Canvas.Fill.Kind := TBrushKind.Solid;
   Canvas.Fill.Color := TAlphaColorRec.White;
   Canvas.FillRect(FullR, 0, 0, [], 1);
 
   R := RectF(
-    MarginL,
-    MarginT,
-    FPaintBox.Width - MarginR,
-    FPaintBox.Height - MarginB);
+    ARect.Left + MarginL,
+    ARect.Top + MarginT,
+    ARect.Right - MarginR,
+    ARect.Bottom - MarginB);
 
   case FMode of
     pmRaw: PlotTitle := 'RAW - 4 channels';
@@ -1468,7 +1453,7 @@ begin
   Canvas.Fill.Color := TAlphaColorRec.Black;
   Canvas.Font.Size := 13;
   Canvas.FillText(
-    RectF(4, 2, FPaintBox.Width - 4, 22),
+    RectF(ARect.Left + 4, ARect.Top + 2, ARect.Right - 4, ARect.Top + 22),
     PlotTitle, False, 1, [],
     TTextAlign.Leading, TTextAlign.Center);
 
@@ -1492,7 +1477,7 @@ begin
     Canvas.Fill.Color := TAlphaColorRec.Gray;
     Canvas.Font.Size := 11;
     Canvas.FillText(
-      RectF(MarginL, FPaintBox.Height - 22, FPaintBox.Width - 5, FPaintBox.Height),
+      RectF(ARect.Left + MarginL, ARect.Bottom - 22, ARect.Right - 5, ARect.Bottom),
       S, False, 1, [],
       TTextAlign.Leading, TTextAlign.Center);
     Exit;
@@ -1550,11 +1535,12 @@ end;
     Canvas.Fill.Color := TAlphaColorRec.Gray;
     Canvas.Font.Size := 11;
     Canvas.FillText(
-      RectF(MarginL, FPaintBox.Height - 22, FPaintBox.Width - 5, FPaintBox.Height),
+      RectF(ARect.Left + MarginL, ARect.Bottom - 22, ARect.Right - 5, ARect.Bottom),
       S, False, 1, [],
       TTextAlign.Leading, TTextAlign.Center);
     Exit;
   end;
+
 
   { Determine one common Y scale for ordinary single-plot modes. }
   MinY := MaxDouble;
@@ -1675,36 +1661,10 @@ end;
   Canvas.Fill.Color := TAlphaColorRec.Gray;
   Canvas.Font.Size := 11;
   Canvas.FillText(
-    RectF(MarginL, FPaintBox.Height - 22, FPaintBox.Width - 5, FPaintBox.Height),
+    RectF(ARect.Left + MarginL, ARect.Bottom - 22, ARect.Right - 5, ARect.Bottom),
     S, False, 1, [],
     TTextAlign.Leading, TTextAlign.Center);
 
-end;
-
-procedure TSignalPlot.PaintBoxPaint(Sender: TObject; Canvas: TCanvas);
-begin
-  RenderPlot(Canvas, FPaintBox.LocalRect)
-end;
-
-procedure TSignalPlot.SetChannels(
-  const Data: TAudioChunk;
-  StartFrame: Int64;
-  SampleRate: Integer;
-  PeakFrame: Int64;
-  const ATitle: string);
-begin
-  FData := Copy(Data);
-  FStartFrame := StartFrame;
-  FSampleRate := SampleRate;
-  FTitle := ATitle;
-  UpdatePeakOffset(PeakFrame);
-  FSelectedOffset := -1;
-  { Raw channel data replaces any previously shown envelope. Leaving the
-    envelope active would make PaintBox keep drawing the stale envelope
-    (and hide the raw signal) after the user zooms back in. }
-  SetLength(FEnvelope, 0);
-  FEnvelopeActive := False;
-  RequestRepaint;
 end;
 
 procedure TSignalPlot.SetStd(
@@ -1782,6 +1742,27 @@ begin
   end
   else
     FSelectedOffset := -1;
+  RequestRepaint;
+end;
+
+procedure TSignalPlot.SetChannels(
+  const Data: TAudioChunk;
+  StartFrame: Int64;
+  SampleRate: Integer;
+  PeakFrame: Int64;
+  const ATitle: string);
+begin
+  FData := Copy(Data);
+  FStartFrame := StartFrame;
+  FSampleRate := SampleRate;
+  FTitle := ATitle;
+  UpdatePeakOffset(PeakFrame);
+  FSelectedOffset := -1;
+  { Raw channel data replaces any previously shown envelope. Leaving the
+    envelope active would make PaintBox keep drawing the stale envelope
+    (and hide the raw signal) after the user zooms back in. }
+  SetLength(FEnvelope, 0);
+  FEnvelopeActive := False;
   RequestRepaint;
 end;
 
@@ -2029,72 +2010,13 @@ begin
     { REDUCED RESOLUTION MODE                                        }
     { Large view: one min/max envelope per screen column.            }
     { ------------------------------------------------------------- }
-
-//    else
-//    begin
-//      for B := 0 to PlotWidth - 1 do
-//      begin
-//        { Frame range represented by this screen column. }
-//        EnvStart :=
-//          FViewStart +
-//          Floor((B / PlotWidth) * ViewWidth);
-//
-//        EnvEnd :=
-//          FViewStart +
-//          Floor(((B + 1) / PlotWidth) * ViewWidth) - 1;
-//
-//        if EnvEnd < EnvStart then
-//          EnvEnd := EnvStart;
-//
-//        { Find envelope points belonging to this screen column. }
-//        ColumnMin := MaxDouble;
-//        ColumnMax := -MaxDouble;
-//
-//        for I := FirstVisible to LastVisible do
-//        begin
-//          P := FEnvelope[I];
-//
-//          CenterFrame :=
-//            P.StartPosition +
-//            (P.EndPosition - P.StartPosition) div 2;
-//
-//          if CenterFrame < EnvStart then
-//            Continue;
-//
-//          if CenterFrame > EnvEnd then
-//            Break;
-//
-//          VMin := PointMin(P);
-//          VMax := PointMax(P);
-//
-//          if VMin < ColumnMin then
-//            ColumnMin := VMin;
-//
-//          if VMax > ColumnMax then
-//            ColumnMax := VMax;
-//        end;
-//
-//        if ColumnMin = MaxDouble then
-//          Continue;
-//
-//        X :=
-//          CR.Left +
-//          (B + 0.5) * CR.Width / PlotWidth;
-//
-//        Y1 := MapY(ColumnMin, MinY, MaxY, CR);
-//        Y2 := MapY(ColumnMax, MinY, MaxY, CR);
-//
-//        Canvas.DrawLine(
-//          PointF(X, Y1),
-//          PointF(X, Y2),
-//          1);
-//      end;
-//    end;
-    { More envelope points than screen columns: aggregate by point
-      INDEX, not by frame range. Bucketing by index guarantees that a
-      single (possibly wide) envelope bucket contributes to exactly one
-      screen column, so the plot can no longer degrade into solid
-      rectangular blocks. }
+    {                                                                 }
+    { Точек огибающей больше, чем экранных колонок: агрегируем по     }
+    { ИНДЕКСУ точки, а не по диапазону кадров. Группировка по индексу }
+    { гарантирует, что один (возможно широкий) bucket огибающей       }
+    { попадёт ровно в одну экранную колонку — график больше не        }
+    { вырождается в сплошные прямоугольные блоки.                     }
+    { ------------------------------------------------------------- }
     else
     begin
       VisibleCount := LastVisible - FirstVisible + 1;
@@ -2400,22 +2322,13 @@ end;
 { TOverviewPlot                                                      }
 { ------------------------------------------------------------------ }
 
-
 constructor TOverviewPlot.Create(APaintBox: TPaintBox);
 begin
-  inherited Create;
+  inherited Create(APaintBox);
 
-  if not Assigned(APaintBox) then
-    raise EArgumentNilException.Create(
-      'TOverviewPlot requires a TPaintBox');
-
-  FPaintBox := APaintBox;
-
-  FPaintBox.OnPaint := PaintBoxPaint;
   FPaintBox.OnMouseDown := PaintBoxMouseDown;
   FPaintBox.OnMouseMove := PaintBoxMouseMove;
   FPaintBox.OnMouseUp := PaintBoxMouseUp;
-  FPaintBox.HitTest := True;
 
   FFullStart := 0;
   FFullEnd := 0;
@@ -2424,20 +2337,6 @@ begin
 
   FDragging := False;
   FDragIsSelection := False;
-end;
-
-destructor TOverviewPlot.Destroy;
-begin
-  if Assigned(FPaintBox) then
-  begin
-    FPaintBox.OnPaint := nil;
-    FPaintBox.OnMouseDown := nil;
-    FPaintBox.OnMouseMove := nil;
-    FPaintBox.OnMouseUp := nil;
-  end;
-
-  FPaintBox := nil;
-  inherited;
 end;
 
 procedure TOverviewPlot.Clear;
@@ -2780,201 +2679,6 @@ Canvas.FillRect(AOuterRect, 0, 0, [], 1);
   end;
 end;
 
-procedure TOverviewPlot.PaintBoxPaint(
-  Sender: TObject;
-  Canvas: TCanvas);
-begin
-  RenderPlot(Canvas, RectF(0, 0, FPaintBox.Width, FPaintBox.Height));
-end;
-
-function TOverviewPlot.RenderToBitmap(AWidth, AHeight: Integer): TBitmap;
-begin
-  Result := TBitmap.Create(AWidth, AHeight);
-  try
-    if Result.Canvas.BeginScene then
-    try
-      RenderPlot(Result.Canvas, RectF(0, 0, AWidth, AHeight));
-    finally
-      Result.Canvas.EndScene;
-    end;
-  except
-    Result.Free;
-    raise;
-  end;
-end;
-//procedure TOverviewPlot.PaintBoxPaint(
-//  Sender: TObject;
-//  Canvas: TCanvas);
-//var
-//  R: TRectF;
-//  I, N: Integer;
-//  X: Single;
-//  YMin, YMax: Double;
-//  Y1, Y2: Single;
-//  ViewLeft, ViewRight: Single;
-//begin
-////  Canvas.Clear(TAlphaColorRec.White);
-//Canvas.Fill.Kind := TBrushKind.Solid;
-//Canvas.Fill.Color := TAlphaColorRec.White;
-//Canvas.FillRect(RectF(0, 0, FPaintBox.Width, FPaintBox.Height), 0, 0, [], 1);
-//
-//  if (Length(FMinValues) = 0) or
-//     (Length(FMaxValues) = 0) or
-//     (FFullEnd <= FFullStart) then
-//    Exit;
-//
-//  R := RectF(
-//    2,
-//    2,
-//    FPaintBox.Width - 2,
-//    FPaintBox.Height - 2);
-//
-//  if (R.Width <= 0) or (R.Height <= 0) then
-//    Exit;
-//
-//  N := Min(
-//    Length(FMinValues),
-//    Length(FMaxValues));
-//
-//  if N <= 0 then
-//    Exit;
-//
-//  { Find global Y range }
-//  YMin := FMinValues[0];
-//  YMax := FMaxValues[0];
-//
-//  for I := 1 to N - 1 do
-//  begin
-//    if FMinValues[I] < YMin then
-//      YMin := FMinValues[I];
-//
-//    if FMaxValues[I] > YMax then
-//      YMax := FMaxValues[I];
-//  end;
-//
-//  if SameValue(YMin, YMax) then
-//  begin
-//    YMin := YMin - 1;
-//    YMax := YMax + 1;
-//  end;
-//
-//  { Zero line }
-//  if (YMin <= 0) and (YMax >= 0) then
-//  begin
-//    Canvas.Stroke.Kind := TBrushKind.Solid;
-//    Canvas.Stroke.Color := TAlphaColorRec.Lightgray;
-//    Canvas.Stroke.Thickness := 1;
-//
-//    Y1 := MapY(0, YMin, YMax, R);
-//
-//    Canvas.DrawLine(
-//      PointF(R.Left, Y1),
-//      PointF(R.Right, Y1),
-//      1);
-//  end;
-//
-//  { Signal envelope }
-//  if FShowChannelColors and GetHasChannelData then
-//    DrawChannelEnvelopes(Canvas, R)
-//  else
-//  begin
-//    Canvas.Stroke.Kind := TBrushKind.Solid;
-//    Canvas.Stroke.Color := TAlphaColorRec.Gray;
-//    Canvas.Stroke.Thickness := 1;
-//
-//    if N = 1 then
-//    begin
-//      X := R.CenterPoint.X;
-//
-//      Canvas.DrawLine(
-//        PointF(X, MapY(FMinValues[0], YMin, YMax, R)),
-//        PointF(X, MapY(FMaxValues[0], YMin, YMax, R)),
-//        1);
-//    end
-//    else
-//    begin
-//      for I := 0 to N - 1 do
-//      begin
-//        X :=
-//          R.Left +
-//          I / (N - 1) * R.Width;
-//
-//        Y1 := MapY(
-//          FMinValues[I],
-//          YMin,
-//          YMax,
-//          R);
-//
-//        Y2 := MapY(
-//          FMaxValues[I],
-//          YMin,
-//          YMax,
-//          R);
-//
-//        Canvas.DrawLine(
-//          PointF(X, Y1),
-//          PointF(X, Y2),
-//          1);
-//      end;
-//    end;
-//  end;
-//
-//  { Current visible range }
-//  ViewLeft := MapX(FViewStart, R);
-//  ViewRight := MapX(FViewEnd, R);
-//
-//  if ViewRight < ViewLeft then
-//    begin
-//     // Swap(ViewLeft, ViewRight);
-//      var temp := ViewLeft  ;
-//      ViewLeft := ViewRight;
-//      ViewRight:= temp
-//    end;
-//
-//
-//  Canvas.Stroke.Kind := TBrushKind.Solid;
-//  Canvas.Stroke.Color := TAlphaColorRec.Red;
-//  Canvas.Stroke.Thickness := 2;
-//
-//  Canvas.DrawRect(
-//    RectF(
-//      ViewLeft,
-//      R.Top,
-//      ViewRight,
-//      R.Bottom),
-//    0,
-//    0,
-//    AllCorners,
-//    1);
-//
-//  { Range currently being dragged by the mouse (drawn on top). }
-//  if FDragging and FDragIsSelection then
-//  begin
-//    var SelLeft := MapX(FDragStartFrame, R);
-//    var SelRight := MapX(FDragCurrentFrame, R);
-//
-//    if SelRight < SelLeft then
-//    begin
-//      var Temp := SelLeft;
-//      SelLeft := SelRight;
-//      SelRight := Temp;
-//    end;
-//
-//    Canvas.Fill.Kind := TBrushKind.Solid;
-//    Canvas.Fill.Color := TAlphaColor($4000A0FF);
-//    Canvas.FillRect(
-//      RectF(SelLeft, R.Top, SelRight, R.Bottom),
-//      0, 0, [], 1);
-//
-//    Canvas.Stroke.Kind := TBrushKind.Solid;
-//    Canvas.Stroke.Color := TAlphaColor($FF1E90FF);
-//    Canvas.Stroke.Thickness := 2;
-//    Canvas.DrawRect(
-//      RectF(SelLeft, R.Top, SelRight, R.Bottom),
-//      0, 0, AllCorners, 1);
-//  end;
-//end;
-
 procedure TOverviewPlot.DrawChannelEnvelopes(
   Canvas: TCanvas;
   const R: TRectF);
@@ -3097,6 +2801,12 @@ var
   R: TRectF;
   Frame: Int64;
 begin
+  if Button = TMouseButton.mbRight then
+  begin
+    HandleRightClick;
+    Exit;
+  end;
+
   if Button <> TMouseButton.mbLeft then
     Exit;
 

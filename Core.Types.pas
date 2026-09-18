@@ -27,6 +27,10 @@ type
   TWaveEnvelope = array of TWaveEnvelopePoint;
 
   TFloatArray = array of Single;
+
+  { Поканальные min/max огибающие; индекс 0..3 — канал 1..4.
+    (Комментарий перенесён из GUI.Plot.pas при чистке дублирующего
+    закомментированного объявления этого типа там же.) }
   TChannelEnvelopes = array[0..3] of TFloatArray;
 
   TAudioFrame = packed record
