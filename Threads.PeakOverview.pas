@@ -137,11 +137,19 @@ begin
       FTotalFrames := TotalFrames;
 
       if (TotalFrames <= 0) or (PeakCount <= 0) then
+      begin
+        FErrorText := Format(
+          'Некорректные параметры peak-файла: TotalFrames=%d, PeakCount=%d',
+          [TotalFrames, PeakCount]);
         Exit;
+      end;
 
       if not Store.ReadEnvelope(0, PeakCount - 1, MaxDisplayPoints,
         Envelope) then
+      begin
+        FErrorText := 'Не удалось прочитать огибающую из peak-файла';
         Exit;
+      end;
 
       if CancelRequested then
       begin
@@ -151,7 +159,10 @@ begin
 
       N := Length(Envelope);
       if N <= 0 then
+      begin
+        FErrorText := 'Огибающая пуста';
         Exit;
+      end;
 
       BinCount := N;
       if BinCount > FPoints then
@@ -228,9 +239,12 @@ begin
     end;
   finally
     Store.Free;
-  end;
 
-  TThread.Synchronize(Self, DoFinished);
+    if CancelRequested then
+      FCanceled := True;
+
+    TThread.Synchronize(Self, DoFinished);
+  end;
 end;
 
 end.

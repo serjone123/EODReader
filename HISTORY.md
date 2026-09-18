@@ -20,6 +20,20 @@
 
 ## Записи
 
+### 2026-09-18 — Базовый класс для фоновых потоков
+
+- Добавлен модуль `Threads.Base.pas` с классом `TEodBackgroundThread`.
+  Каркас берёт на себя общий boilerplate воркеров: событие отмены
+  (`Cancel`/`CancelRequested`), поля `FCanceled`/`FErrorText`,
+  метод `CheckCancel` (бросает `EAbort`), гарантированный вызов
+  `DoFinished` из `finally` при любом сценарии завершения
+  (нормальное, `Exit`, отмена, исключение). Раньше `DoFinished`
+  не вызывался при `Exit` и форма оставалась в состоянии «идёт работа».
+- `Threads.WavOpen.pas` переведён на `TEodBackgroundThread`: тело
+  `Execute` заменено на `RunTask`, россыпь `if CancelRequested then
+  ... Exit` — на `CheckCancel`. Поведение не изменилось.
+- Автор: DeepSeek (по запросу serjone).
+
 ### 2026-09-18 — Чистка мёртвого кода в GUI.Plot.pas + общий предок TPlotBase для TOverviewPlot/TSignalPlot — Claude
 
 - Удалены крупные закомментированные дубли в `GUI.Plot.pas`: старая версия `TSignalPlot.ClampView`, старая версия `TSignalPlot.ZoomAt`, старый вариант агрегации в `DrawEnvelope4Channels` (заголовки "NORMAL MODE"/"REDUCED RESOLUTION MODE" сохранены и объединены с уже существующим пояснением про агрегацию по индексу), полный закомментированный дубль `TOverviewPlot.PaintBoxPaint` (~200 строк, дублировал `RenderPlot`, ничего уникального не содержал).

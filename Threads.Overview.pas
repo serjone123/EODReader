@@ -128,61 +128,46 @@ begin
 
   Source := nil;
   try
-    if CancelRequested then
-    begin
-      FCanceled := True;
-      Exit;
-    end;
-
-    Source := TFourChannelAudioSource.Create(FFile1, FFile2);
-    TotalFrames := Source.TotalFrames;
-    FTotalFrames := TotalFrames;
-
-    if TotalFrames <= 0 then
-      Exit;
-
-    N := FPoints;
-    if TotalFrames < N then
-      N := Integer(TotalFrames);
-    if N < 1 then
-      Exit;
-
-    SetLength(FOverviewMin, N);
-    SetLength(FOverviewMax, N);
-    for Ch := 0 to 3 do
-    begin
-      SetLength(FChannelMin[Ch], N);
-      SetLength(FChannelMax[Ch], N);
-    end;
-
-    PercentStep := TotalFrames div 100;
-    if PercentStep < ChunkSize then
-      PercentStep := ChunkSize;
-    NextProgress := PercentStep;
-
-    for I := 0 to N - 1 do
-    begin
+    try
       if CancelRequested then
       begin
         FCanceled := True;
         Exit;
       end;
 
-      BinStart := (Int64(I) * TotalFrames) div N;
-      BinEnd := (Int64(I + 1) * TotalFrames) div N - 1;
-      if BinEnd < BinStart then
-        BinEnd := BinStart;
+      Source := TFourChannelAudioSource.Create(FFile1, FFile2);
+      TotalFrames := Source.TotalFrames;
+      FTotalFrames := TotalFrames;
 
-      VMax := 0;
-      ChInit := False;
-      for C := 0 to 3 do
+      if TotalFrames <= 0 then
       begin
-        ChMin[C] := 0;
-        ChMax[C] := 0;
+        FErrorText := 'Источник не содержит кадров (TotalFrames <= 0)';
+        Exit;
       end;
 
-      StartFrame := BinStart;
-      while StartFrame <= BinEnd do
+      N := FPoints;
+      if TotalFrames < N then
+        N := Integer(TotalFrames);
+      if N < 1 then
+      begin
+        FErrorText := 'Некорректное количество точек обзора';
+        Exit;
+      end;
+
+      SetLength(FOverviewMin, N);
+      SetLength(FOverviewMax, N);
+      for Ch := 0 to 3 do
+      begin
+        SetLength(FChannelMin[Ch], N);
+        SetLength(FChannelMax[Ch], N);
+      end;
+
+      PercentStep := TotalFrames div 100;
+      if PercentStep < ChunkSize then
+        PercentStep := ChunkSize;
+      NextProgress := PercentStep;
+
+      for I := 0 to N - 1 do
       begin
         if CancelRequested then
         begin
@@ -190,79 +175,105 @@ begin
           Exit;
         end;
 
-        EndFrame := BinEnd;
-        if EndFrame > StartFrame + ChunkSize - 1 then
-          EndFrame := StartFrame + ChunkSize - 1;
+        BinStart := (Int64(I) * TotalFrames) div N;
+        BinEnd := (Int64(I + 1) * TotalFrames) div N - 1;
+        if BinEnd < BinStart then
+          BinEnd := BinStart;
 
-        Count64 := EndFrame - StartFrame + 1;
-        if Count64 > MaxInt then
-          raise Exception.Create('Overview chunk is too large');
-
-        Source.ReadFrames(StartFrame, Integer(Count64), Data);
-
-        for J := 0 to Length(Data) - 1 do
+        VMax := 0;
+        ChInit := False;
+        for C := 0 to 3 do
         begin
-          V := Abs(Data[J].Ch1);
-          if Abs(Data[J].Ch2) > V then V := Abs(Data[J].Ch2);
-          if Abs(Data[J].Ch3) > V then V := Abs(Data[J].Ch3);
-          if Abs(Data[J].Ch4) > V then V := Abs(Data[J].Ch4);
-          if V > VMax then
-            VMax := V;
+          ChMin[C] := 0;
+          ChMax[C] := 0;
+        end;
 
-          if ChInit then
+        StartFrame := BinStart;
+        while StartFrame <= BinEnd do
+        begin
+          if CancelRequested then
           begin
-            if Data[J].Ch1 < ChMin[0] then ChMin[0] := Data[J].Ch1;
-            if Data[J].Ch1 > ChMax[0] then ChMax[0] := Data[J].Ch1;
-            if Data[J].Ch2 < ChMin[1] then ChMin[1] := Data[J].Ch2;
-            if Data[J].Ch2 > ChMax[1] then ChMax[1] := Data[J].Ch2;
-            if Data[J].Ch3 < ChMin[2] then ChMin[2] := Data[J].Ch3;
-            if Data[J].Ch3 > ChMax[2] then ChMax[2] := Data[J].Ch3;
-            if Data[J].Ch4 < ChMin[3] then ChMin[3] := Data[J].Ch4;
-            if Data[J].Ch4 > ChMax[3] then ChMax[3] := Data[J].Ch4;
-          end
-          else
-          begin
-            ChMin[0] := Data[J].Ch1; ChMax[0] := Data[J].Ch1;
-            ChMin[1] := Data[J].Ch2; ChMax[1] := Data[J].Ch2;
-            ChMin[2] := Data[J].Ch3; ChMax[2] := Data[J].Ch3;
-            ChMin[3] := Data[J].Ch4; ChMax[3] := Data[J].Ch4;
-            ChInit := True;
+            FCanceled := True;
+            Exit;
           end;
+
+          EndFrame := BinEnd;
+          if EndFrame > StartFrame + ChunkSize - 1 then
+            EndFrame := StartFrame + ChunkSize - 1;
+
+          Count64 := EndFrame - StartFrame + 1;
+          if Count64 > MaxInt then
+            raise Exception.Create('Overview chunk is too large');
+
+          Source.ReadFrames(StartFrame, Integer(Count64), Data);
+
+          for J := 0 to Length(Data) - 1 do
+          begin
+            V := Abs(Data[J].Ch1);
+            if Abs(Data[J].Ch2) > V then V := Abs(Data[J].Ch2);
+            if Abs(Data[J].Ch3) > V then V := Abs(Data[J].Ch3);
+            if Abs(Data[J].Ch4) > V then V := Abs(Data[J].Ch4);
+            if V > VMax then
+              VMax := V;
+
+            if ChInit then
+            begin
+              if Data[J].Ch1 < ChMin[0] then ChMin[0] := Data[J].Ch1;
+              if Data[J].Ch1 > ChMax[0] then ChMax[0] := Data[J].Ch1;
+              if Data[J].Ch2 < ChMin[1] then ChMin[1] := Data[J].Ch2;
+              if Data[J].Ch2 > ChMax[1] then ChMax[1] := Data[J].Ch2;
+              if Data[J].Ch3 < ChMin[2] then ChMin[2] := Data[J].Ch3;
+              if Data[J].Ch3 > ChMax[2] then ChMax[2] := Data[J].Ch3;
+              if Data[J].Ch4 < ChMin[3] then ChMin[3] := Data[J].Ch4;
+              if Data[J].Ch4 > ChMax[3] then ChMax[3] := Data[J].Ch4;
+            end
+            else
+            begin
+              ChMin[0] := Data[J].Ch1; ChMax[0] := Data[J].Ch1;
+              ChMin[1] := Data[J].Ch2; ChMax[1] := Data[J].Ch2;
+              ChMin[2] := Data[J].Ch3; ChMax[2] := Data[J].Ch3;
+              ChMin[3] := Data[J].Ch4; ChMax[3] := Data[J].Ch4;
+              ChInit := True;
+            end;
+          end;
+
+          Inc(FProcessed, Length(Data));
+          if FProcessed >= NextProgress then
+          begin
+            TThread.Synchronize(Self, DoProgress);
+            while (PercentStep > 0) and (NextProgress <= FProcessed) do
+              Inc(NextProgress, PercentStep);
+          end;
+
+          StartFrame := EndFrame + 1;
         end;
 
-        Inc(FProcessed, Length(Data));
-        if FProcessed >= NextProgress then
+        FOverviewMin[I] := -VMax;
+        FOverviewMax[I] := VMax;
+        for Ch := 0 to 3 do
         begin
-          TThread.Synchronize(Self, DoProgress);
-          while NextProgress <= FProcessed do
-            Inc(NextProgress, PercentStep);
+          FChannelMin[Ch][I] := ChMin[Ch];
+          FChannelMax[Ch][I] := ChMax[Ch];
         end;
-
-        StartFrame := EndFrame + 1;
       end;
 
-      FOverviewMin[I] := -VMax;
-      FOverviewMax[I] := VMax;
-      for Ch := 0 to 3 do
+      FProcessed := TotalFrames;
+      TThread.Synchronize(Self, DoProgress);
+    except
+      on E: Exception do
       begin
-        FChannelMin[Ch][I] := ChMin[Ch];
-        FChannelMax[Ch][I] := ChMax[Ch];
+        FErrorText := E.Message;
+        FCanceled := CancelRequested;
       end;
     end;
+  finally
+    Source.Free;
 
-    FProcessed := TotalFrames;
-    TThread.Synchronize(Self, DoProgress);
-  except
-    on E: Exception do
-    begin
-      FErrorText := E.Message;
-      FCanceled := CancelRequested;
-    end;
+    if CancelRequested then
+      FCanceled := True;
+
+    TThread.Synchronize(Self, DoFinished);
   end;
-
-  Source.Free;
-
-  TThread.Synchronize(Self, DoFinished);
 end;
 
 end.

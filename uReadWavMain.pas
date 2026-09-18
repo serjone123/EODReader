@@ -174,8 +174,8 @@ type
     procedure AnalysisFinished(Sender: TObject; const Peaks: TPeakArray;
       Canceled: Boolean; const ErrorText: string);
     procedure AnalysisThreadTerminated(Sender: TObject);
-    procedure OpenProgress(Sender: TObject; Stage: Integer; const Text: string);
-    procedure OpenFinished(Sender: TObject; Session: TEodGuiSession;
+    procedure OpenProgress(Stage: Integer; const Text: string);
+    procedure OpenFinished(Session: TEodGuiSession;
       Canceled: Boolean; const ErrorText: string);
     procedure OpenThreadTerminated(Sender: TObject);
     procedure SetAnalysisUiState(Analyzing: Boolean);
@@ -429,7 +429,7 @@ begin
     FAnalyzeButton.Text := 'Analyze WAV';
 end;
 
-procedure TMainForm.OpenProgress(Sender: TObject; Stage: Integer;
+procedure TMainForm.OpenProgress(Stage: Integer;
   const Text: string);
 begin
   if FClosing then
@@ -437,7 +437,7 @@ begin
   UpdateStatus(Format('Opening WAV: %d%% - %s', [Stage, Text]));
 end;
 
-procedure TMainForm.OpenFinished(Sender: TObject; Session: TEodGuiSession;
+procedure TMainForm.OpenFinished(Session: TEodGuiSession;
   Canceled: Boolean; const ErrorText: string);
 var
   OldSession: TEodGuiSession;
@@ -1385,9 +1385,9 @@ begin
     D.Free;
   end;
 
-  FOpenThread := TEodWavOpenThread.Create(File1, File2);
-  FOpenThread.OnProgress := OpenProgress;
-  FOpenThread.OnFinished := OpenFinished;
+  FOpenThread := TEodWavOpenThread.Create(File1, File2, OpenProgress, OpenFinished);
+//  FOpenThread.OnProgress := OpenProgress;
+//  FOpenThread.OnFinished := OpenFinished;
   FOpenThread.OnTerminate := OpenThreadTerminated;
   FOpenThread.Start;
 

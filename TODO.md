@@ -26,6 +26,15 @@
 - [x] Добавить в контекстное меню копирование текущего графика в буфер обмена и сохранение текущего вида графика в файл.
 - [x] Устранить фриз интерфейса при открытии больших WAV: перенести тяжёлые операции из UI-потока, сохранить прогресс и отмену.
 - [x] Устранить фриз интерфейса при открытии больших EODPK: расчёт Overview выполнять в фоне с прогрессом и отменой.
+- [ ] Перевести остальные фоновые потоки на `TEodBackgroundThread`:
+      - [ ] `Threads.PeakOverview.pas` — `TEodPeakOverviewThread`
+      - [ ] `Threads.Overview.pas` — `TEodOverviewThread`
+      - [ ] `Threads.Analysis.pas` — `TEodAnalysisThread`
+            (проверить взаимодействие с существующим `DoTerminate`
+            и колбэками детектора)
+      - [ ] `Threads.VideoExport.pas` — `TEodVideoExportThread`
+            (два этапа: render bar + composite; вынести в `RunTask`
+            оба этапа и сохранить `FStage`/`FDone`/`FTotal`)
 
 ## P0 — стабилизация и фиксация семантики
 
