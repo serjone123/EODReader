@@ -34,7 +34,7 @@ const
 
 type
   { Поканальные min/max огибающие; индекс 0..3 — канал 1..4. }
-  TChannelEnvelopes = array[0..3] of TFloatArray;
+//  TChannelEnvelopes = array[0..3] of TFloatArray;
 
   TOverviewPlot = class
   private
@@ -65,6 +65,7 @@ type
     FDragStartFrame: Int64;
     FDragCurrentFrame: Int64;
 
+    procedure RenderPlot(Canvas: TCanvas; const AOuterRect: TRectF);
     procedure PaintBoxPaint(Sender: TObject; Canvas: TCanvas);
     procedure PaintBoxMouseDown(Sender: TObject;
       Button: TMouseButton; Shift: TShiftState; X, Y: Single);
@@ -101,6 +102,13 @@ type
       AFullStart, AFullEnd: Int64);
 
     procedure SetViewRange(AStart, AEnd: Int64);
+
+    { Рендерит текущее состояние графика (данные + FViewStart/FViewEnd) в
+      новый offscreen TBitmap заданного размера, без привязки к реальному
+      TPaintBox. Используется для покадрового экспорта видео обзорной
+      полосы (см. Video.OverlayRenderer.pas). Владение результатом
+      переходит к вызывающему коду — он обязан освободить TBitmap. }
+    function RenderToBitmap(AWidth, AHeight: Integer): TBitmap;
 
     { Рисовать обзор поканально, в EodChannelColors. Если поканальных
       данных нет (HasChannelData = False), рисуется обычная огибающая. }
@@ -2600,10 +2608,9 @@ begin
      (MaxY - MinY)) *
     R.Height;
 end;
-
-procedure TOverviewPlot.PaintBoxPaint(
-  Sender: TObject;
-  Canvas: TCanvas);
+procedure TOverviewPlot.RenderPlot(
+  Canvas: TCanvas;
+  const AOuterRect: TRectF);
 var
   R: TRectF;
   I, N: Integer;
@@ -2612,10 +2619,9 @@ var
   Y1, Y2: Single;
   ViewLeft, ViewRight: Single;
 begin
-//  Canvas.Clear(TAlphaColorRec.White);
 Canvas.Fill.Kind := TBrushKind.Solid;
 Canvas.Fill.Color := TAlphaColorRec.White;
-Canvas.FillRect(RectF(0, 0, FPaintBox.Width, FPaintBox.Height), 0, 0, [], 1);
+Canvas.FillRect(AOuterRect, 0, 0, [], 1);
 
   if (Length(FMinValues) = 0) or
      (Length(FMaxValues) = 0) or
@@ -2623,10 +2629,10 @@ Canvas.FillRect(RectF(0, 0, FPaintBox.Width, FPaintBox.Height), 0, 0, [], 1);
     Exit;
 
   R := RectF(
-    2,
-    2,
-    FPaintBox.Width - 2,
-    FPaintBox.Height - 2);
+    AOuterRect.Left + 2,
+    AOuterRect.Top + 2,
+    AOuterRect.Right - 2,
+    AOuterRect.Bottom - 2);
 
   if (R.Width <= 0) or (R.Height <= 0) then
     Exit;
@@ -2718,13 +2724,13 @@ Canvas.FillRect(RectF(0, 0, FPaintBox.Width, FPaintBox.Height), 0, 0, [], 1);
     end;
   end;
 
-  { Current visible range }
+  { Current visible range (в видео-рендере — вырожденный в линию плейхед,
+    если FViewStart = FViewEnd, см. Video.OverlayRenderer.pas). }
   ViewLeft := MapX(FViewStart, R);
   ViewRight := MapX(FViewEnd, R);
 
   if ViewRight < ViewLeft then
     begin
-     // Swap(ViewLeft, ViewRight);
       var temp := ViewLeft  ;
       ViewLeft := ViewRight;
       ViewRight:= temp
@@ -2773,6 +2779,201 @@ Canvas.FillRect(RectF(0, 0, FPaintBox.Width, FPaintBox.Height), 0, 0, [], 1);
       0, 0, AllCorners, 1);
   end;
 end;
+
+procedure TOverviewPlot.PaintBoxPaint(
+  Sender: TObject;
+  Canvas: TCanvas);
+begin
+  RenderPlot(Canvas, RectF(0, 0, FPaintBox.Width, FPaintBox.Height));
+end;
+
+function TOverviewPlot.RenderToBitmap(AWidth, AHeight: Integer): TBitmap;
+begin
+  Result := TBitmap.Create(AWidth, AHeight);
+  try
+    if Result.Canvas.BeginScene then
+    try
+      RenderPlot(Result.Canvas, RectF(0, 0, AWidth, AHeight));
+    finally
+      Result.Canvas.EndScene;
+    end;
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+//procedure TOverviewPlot.PaintBoxPaint(
+//  Sender: TObject;
+//  Canvas: TCanvas);
+//var
+//  R: TRectF;
+//  I, N: Integer;
+//  X: Single;
+//  YMin, YMax: Double;
+//  Y1, Y2: Single;
+//  ViewLeft, ViewRight: Single;
+//begin
+////  Canvas.Clear(TAlphaColorRec.White);
+//Canvas.Fill.Kind := TBrushKind.Solid;
+//Canvas.Fill.Color := TAlphaColorRec.White;
+//Canvas.FillRect(RectF(0, 0, FPaintBox.Width, FPaintBox.Height), 0, 0, [], 1);
+//
+//  if (Length(FMinValues) = 0) or
+//     (Length(FMaxValues) = 0) or
+//     (FFullEnd <= FFullStart) then
+//    Exit;
+//
+//  R := RectF(
+//    2,
+//    2,
+//    FPaintBox.Width - 2,
+//    FPaintBox.Height - 2);
+//
+//  if (R.Width <= 0) or (R.Height <= 0) then
+//    Exit;
+//
+//  N := Min(
+//    Length(FMinValues),
+//    Length(FMaxValues));
+//
+//  if N <= 0 then
+//    Exit;
+//
+//  { Find global Y range }
+//  YMin := FMinValues[0];
+//  YMax := FMaxValues[0];
+//
+//  for I := 1 to N - 1 do
+//  begin
+//    if FMinValues[I] < YMin then
+//      YMin := FMinValues[I];
+//
+//    if FMaxValues[I] > YMax then
+//      YMax := FMaxValues[I];
+//  end;
+//
+//  if SameValue(YMin, YMax) then
+//  begin
+//    YMin := YMin - 1;
+//    YMax := YMax + 1;
+//  end;
+//
+//  { Zero line }
+//  if (YMin <= 0) and (YMax >= 0) then
+//  begin
+//    Canvas.Stroke.Kind := TBrushKind.Solid;
+//    Canvas.Stroke.Color := TAlphaColorRec.Lightgray;
+//    Canvas.Stroke.Thickness := 1;
+//
+//    Y1 := MapY(0, YMin, YMax, R);
+//
+//    Canvas.DrawLine(
+//      PointF(R.Left, Y1),
+//      PointF(R.Right, Y1),
+//      1);
+//  end;
+//
+//  { Signal envelope }
+//  if FShowChannelColors and GetHasChannelData then
+//    DrawChannelEnvelopes(Canvas, R)
+//  else
+//  begin
+//    Canvas.Stroke.Kind := TBrushKind.Solid;
+//    Canvas.Stroke.Color := TAlphaColorRec.Gray;
+//    Canvas.Stroke.Thickness := 1;
+//
+//    if N = 1 then
+//    begin
+//      X := R.CenterPoint.X;
+//
+//      Canvas.DrawLine(
+//        PointF(X, MapY(FMinValues[0], YMin, YMax, R)),
+//        PointF(X, MapY(FMaxValues[0], YMin, YMax, R)),
+//        1);
+//    end
+//    else
+//    begin
+//      for I := 0 to N - 1 do
+//      begin
+//        X :=
+//          R.Left +
+//          I / (N - 1) * R.Width;
+//
+//        Y1 := MapY(
+//          FMinValues[I],
+//          YMin,
+//          YMax,
+//          R);
+//
+//        Y2 := MapY(
+//          FMaxValues[I],
+//          YMin,
+//          YMax,
+//          R);
+//
+//        Canvas.DrawLine(
+//          PointF(X, Y1),
+//          PointF(X, Y2),
+//          1);
+//      end;
+//    end;
+//  end;
+//
+//  { Current visible range }
+//  ViewLeft := MapX(FViewStart, R);
+//  ViewRight := MapX(FViewEnd, R);
+//
+//  if ViewRight < ViewLeft then
+//    begin
+//     // Swap(ViewLeft, ViewRight);
+//      var temp := ViewLeft  ;
+//      ViewLeft := ViewRight;
+//      ViewRight:= temp
+//    end;
+//
+//
+//  Canvas.Stroke.Kind := TBrushKind.Solid;
+//  Canvas.Stroke.Color := TAlphaColorRec.Red;
+//  Canvas.Stroke.Thickness := 2;
+//
+//  Canvas.DrawRect(
+//    RectF(
+//      ViewLeft,
+//      R.Top,
+//      ViewRight,
+//      R.Bottom),
+//    0,
+//    0,
+//    AllCorners,
+//    1);
+//
+//  { Range currently being dragged by the mouse (drawn on top). }
+//  if FDragging and FDragIsSelection then
+//  begin
+//    var SelLeft := MapX(FDragStartFrame, R);
+//    var SelRight := MapX(FDragCurrentFrame, R);
+//
+//    if SelRight < SelLeft then
+//    begin
+//      var Temp := SelLeft;
+//      SelLeft := SelRight;
+//      SelRight := Temp;
+//    end;
+//
+//    Canvas.Fill.Kind := TBrushKind.Solid;
+//    Canvas.Fill.Color := TAlphaColor($4000A0FF);
+//    Canvas.FillRect(
+//      RectF(SelLeft, R.Top, SelRight, R.Bottom),
+//      0, 0, [], 1);
+//
+//    Canvas.Stroke.Kind := TBrushKind.Solid;
+//    Canvas.Stroke.Color := TAlphaColor($FF1E90FF);
+//    Canvas.Stroke.Thickness := 2;
+//    Canvas.DrawRect(
+//      RectF(SelLeft, R.Top, SelRight, R.Bottom),
+//      0, 0, AllCorners, 1);
+//  end;
+//end;
 
 procedure TOverviewPlot.DrawChannelEnvelopes(
   Canvas: TCanvas;

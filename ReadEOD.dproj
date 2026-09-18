@@ -251,6 +251,11 @@
         <DCCReference Include="Electrode.Layout.pas"/>
         <DCCReference Include="Electrode.Localization.pas"/>
         <DCCReference Include="Electrode.Geometry.pas"/>
+        <DCCReference Include="GUI.VideoExportForm.pas"/>
+        <DCCReference Include="Threads.VideoExport.pas"/>
+        <DCCReference Include="Video.FfmpegExport.pas"/>
+        <DCCReference Include="Video.FfmpegLocate.pas"/>
+        <DCCReference Include="Video.OverlayRenderer.pas"/>
         <None Include="TODO.md"/>
         <None Include="AGENTS.md"/>
         <None Include="HISTORY.md"/>
@@ -303,6 +308,12 @@
                         <Overwrite>true</Overwrite>
                     </Platform>
                 </DeployFile>
+                <DeployFile LocalName="AGENTS.md" Configuration="Release" Class="ProjectFile">
+                    <Platform Name="Win32">
+                        <RemoteDir>.\</RemoteDir>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
                 <DeployFile LocalName="Bin\ReadEOD.exe" Configuration="Debug" Class="ProjectOutput">
                     <Platform Name="Win32">
                         <RemoteName>ReadEOD.exe</RemoteName>
@@ -321,7 +332,19 @@
                         <Overwrite>true</Overwrite>
                     </Platform>
                 </DeployFile>
+                <DeployFile LocalName="HISTORY.md" Configuration="Release" Class="ProjectFile">
+                    <Platform Name="Win32">
+                        <RemoteDir>.\</RemoteDir>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
                 <DeployFile LocalName="README.md" Configuration="Debug" Class="ProjectFile">
+                    <Platform Name="Win32">
+                        <RemoteDir>.\</RemoteDir>
+                        <Overwrite>true</Overwrite>
+                    </Platform>
+                </DeployFile>
+                <DeployFile LocalName="README.md" Configuration="Release" Class="ProjectFile">
                     <Platform Name="Win32">
                         <RemoteDir>.\</RemoteDir>
                         <Overwrite>true</Overwrite>

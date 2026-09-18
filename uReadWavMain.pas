@@ -19,6 +19,7 @@ uses
 , Threads.Overview
 , Threads.PeakOverview, FMX.Menus
 , Electrode.LayoutForm
+, GUI.VideoExportForm
  ;
 
 type
@@ -48,7 +49,9 @@ type
     FPlaySpeedBox: TComboBox;
     MainMenu1: TMainMenu;
     btGeometry: TButton;
+    btVideoExport: TButton;
     procedure btGeometryClick(Sender: TObject);
+    procedure btVideoExportClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure FAnalyzeButtonClick(Sender: TObject);
@@ -2413,6 +2416,38 @@ end;
 procedure TMainForm.btGeometryClick(Sender: TObject);
 begin
   ShowElectrodeLayoutForm
+end;
+
+procedure TMainForm.btVideoExportClick(Sender: TObject);
+var
+  SessionData: TVideoExportSessionData;
+begin
+  if FSession.Mode = dmNone then
+  begin
+    UpdateStatus('Сначала откройте WAV или .eodpk.');
+    Exit;
+  end;
+
+  if Length(FOverviewMin) = 0 then
+  begin
+    UpdateStatus('Обзорный график ещё не построен — дождитесь его загрузки.');
+    Exit;
+  end;
+
+  { Экспорт видео использует уже посчитанную для экранного обзорного
+    графика огибающую (FOverviewMin/Max/ChMin/ChMax) — тот же массив,
+    что рисует FOverview на главной форме, повторный проход по файлу
+    не требуется. }
+  SessionData.SampleRate := FSession.SampleRate;
+  SessionData.TotalFrames := FSession.TotalFrames;
+  SessionData.EnvelopeMin := FOverviewMin;
+  SessionData.EnvelopeMax := FOverviewMax;
+  SessionData.ChannelMin := FOverviewChMin;
+  SessionData.ChannelMax := FOverviewChMax;
+  SessionData.ChannelColors := FOverviewChannelColors;
+
+  ShowVideoExportForm(Self, SessionData);
+
 end;
 
 end.

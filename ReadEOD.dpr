@@ -27,7 +27,12 @@ uses
   Electrode.LayoutForm in 'Electrode.LayoutForm.pas',
   Electrode.Layout in 'Electrode.Layout.pas',
   Electrode.Localization in 'Electrode.Localization.pas',
-  Electrode.Geometry in 'Electrode.Geometry.pas';
+  Electrode.Geometry in 'Electrode.Geometry.pas',
+  GUI.VideoExportForm in 'GUI.VideoExportForm.pas',
+  Threads.VideoExport in 'Threads.VideoExport.pas',
+  Video.FfmpegExport in 'Video.FfmpegExport.pas',
+  Video.FfmpegLocate in 'Video.FfmpegLocate.pas',
+  Video.OverlayRenderer in 'Video.OverlayRenderer.pas';
 
 {$R *.res}
 
