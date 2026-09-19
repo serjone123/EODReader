@@ -101,7 +101,21 @@ begin
   finally
     if CancelRequested then
       FCanceled := True;
-    TThread.Synchronize(Self, DoFinished);
+    try
+      TThread.Synchronize(Self, DoFinished);
+    except
+      on E: Exception do
+      begin
+        { Исключение из обработчика владельца иначе осело бы в
+          FatalException потока и пропало — передаём его в главный поток. }
+        var Msg := E.Message;
+        TThread.Queue(nil,
+          procedure
+          begin
+            raise Exception.Create(Msg);
+          end);
+      end;
+    end;
   end;
 end;
 

@@ -44,7 +44,7 @@
 
 ### Вход: пара стерео-WAV
 `TFourChannelAudioSource` (IO.AudioSource) объединяет два стерео-WAV в один
-поток 4-канальных кадров `TAudioFrame` (4 × Single). Чтение WAV — Eod.WavReader.
+поток 4-канальных кадров `TAudioFrame` (4 × Single). Чтение WAV — IO.WavReader.
 
 ### Формат `.eodpk` (версия 3)
 Единицы: `IO.PeakStore` (`TEodPeakStore`). Раскладка файла:
@@ -165,7 +165,7 @@ Cache level 0 … N
 | `IO.PeakStore.pas` | Формат `.eodpk` v3: чтение/запись записей пиков, страницы, многоуровневый кэш огибающей. |
 | `Signal.Peaks.pas` | `FindPeaksProminence` — O(N) поиск пиков по prominence. |
 | `Detection.Detector.pas` | `TEodDetector` — конвейер анализа (`AnalyzePeaks`), прогресс/отмена. |
-| `Eod.Fir15.pas` | FIR-фильтр 15-го порядка. |
+| `Signal.Fir15.pas` | FIR-фильтр 15-го порядка. |
 | `Signal.Statistics.pas` | STD по 4 каналам (покадрово). |
 | `Detection.Correlation.pas`, `Detection.Templates.pas`, `Detection.Classifier.pas` | Корреляция с шаблонами и классификация типов рыбы (Gnat / Morm / Stim). |
 | `IO.AudioSource.pas` | `TFourChannelAudioSource`: два стерео-WAV → поток 4-канальных кадров. |
@@ -173,8 +173,16 @@ Cache level 0 … N
 | `IO.SignalCache.pas` | Кэш сегментов сигнала. |
 | `Threads.Analysis.pas` | `TEodAnalysisThread` — фоновый анализ (FreeOnTerminate, отмена через TEvent). |
 | `Threads.WavOpen.pas` | `TEodWavOpenThread` — фоновое открытие WAV-пары. |
+| `Threads.Base.pas` | `TEodBackgroundThread` — общий каркас воркеров: отмена, текст ошибки, гарантированный вызов `DoFinished`. |
+| `Threads.Overview.pas`, `Threads.PeakOverview.pas` | Расчёт обзорной огибающей для WAV и для `.eodpk`. |
+| `Threads.VideoExport.pas` | Фоновый двухэтапный экспорт видео: рендер полосы, затем overlay. |
+| `GUI.VideoExportForm.pas` | Немодальная форма экспорта видео (Offset, Preview/Full). |
+| `GUI.FileNaming.pas` | Поиск парного WAV (`_Tr12`/`_Tr34`), имя `.eodpk` по умолчанию. |
+| `Video.FfmpegLocate.pas` | Поиск `ffmpeg.exe`, путь хранится в `video_export_settings.json`. |
+| `Video.OverlayRenderer.pas` | Покадровый offscreen-рендер обзорной полосы. |
+| `Video.FfmpegExport.pas` | ffprobe, кодирование кадров через stdin, ffmpeg overlay. |
 | `Core.ConfigStore.pas` | Загрузка/сохранение `config.json`. |
-| `Eod.SettingsForm.pas` | Диалог настроек детектора. |
+| `GUI.SettingsForm.pas` | Диалог настроек детектора. |
 | `Core.Types.pas` | Общие типы: `TPeak`, `TAudioFrame`, `TEodDetectorConfig`, огибающая и т.п. |
 | `Electrode.Geometry.pas` | Аффинная калибровка электродной геометрии (Hartley-нормализация, опциональный LM-refinement). |
 | `Electrode.Layout.pas` | Модель электродных пар и меток рыбы, JSON-хранение разметки. |

@@ -1398,24 +1398,6 @@ begin
   UpdateStatus('Opening WAV in background...');
 end;
 
-// procedure TMainForm.FPeakListClick(Sender: TObject);
-/// /begin
-/// /  if FPeakList.ItemIndex >= 0 then
-/// /    ShowPeak(FPeakList.ItemIndex);
-// var
-// PeakIndex: Integer;
-// begin
-// if FPeakList.ItemIndex < 0 then
-// Exit;
-//
-// PeakIndex :=
-// FPeakListFirstIndex +
-// FPeakList.ItemIndex;
-//
-// if (PeakIndex >= 0) and
-// (PeakIndex < FSession.PeakCount) then
-// ShowPeak(PeakIndex);
-// end;
 procedure TMainForm.FPeakListClick(Sender: TObject);
 var
   PeakIndex: Integer;
@@ -2405,12 +2387,6 @@ begin
 
   if FClosing then
     Close;
-end;
-
-
-function AddMenuItem(PM: TPopupMenu; AText: string; AAction: TNotifyEvent):TMenuItem;
-begin
-
 end;
 
 procedure TMainForm.btGeometryClick(Sender: TObject);

@@ -20,6 +20,18 @@
 
 ## Записи
 
+### 2026-09-19 — Перекодировка в UTF-8 с BOM, синхронизация документации — Claude
+
+- serjone перекодировал исходники и `.md` в UTF-8 с BOM (ранее `Signal.Peaks.pas`
+  и `TODO.md` были в cp1251); в `AGENTS.md` обновлено правило про кодировки.
+- В `uReadWavMain.pas` удалена неиспользуемая заглушка `AddMenuItem`.
+- В `README.md` исправлены устаревшие имена модулей, добавлены `Threads.Base`,
+  `Threads.Overview`, `Threads.PeakOverview`, `Threads.VideoExport`,
+  `GUI.VideoExportForm`, `GUI.FileNaming`, `Video.*`.
+- `Threads.Base.pas`: вызов `DoFinished` снова защищён `try/except` (см. запись
+  от 2026-09-18, в коде защиты не оказалось).
+- Логика и расчёты не менялись. Собралось, работает.
+
 ### 2026-09-18 — Перевод Threads.Overview и Threads.PeakOverview на TEodBackgroundThread; доработка Threads.Base — Claude
 
 - `Threads.Overview.pas` и `Threads.PeakOverview.pas` переведены на
