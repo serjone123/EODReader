@@ -11,7 +11,8 @@ uses
 , Detection.Detector
 , IO.PeakStore
 , GUI.Model
-, GUI.Plot
+, GUI.Plot.Signal
+, GUI.Plot.Overview
 , GUI.Playback
 , GUI.PeakList
 , GUI.Analysis

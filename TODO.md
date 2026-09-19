@@ -218,6 +218,7 @@
 
 # Выполнено
 
+- `[x]` Разделение `GUI.Plot.pas` на `GUI.Plot.Base.pas` + `GUI.Plot.Signal.pas` + `GUI.Plot.Overview.pas` выполнено 2026-09-19; подробности в `HISTORY.md`.
 - `[x]` Переименование модулей выполнено 2026-09-12; подробности в `HISTORY.md`.
 - `[x]` Оптимизация `FindPeaksProminence` до O(N) выполнена; подробности в `HISTORY.md`.
 - `[x]` Исправление FIR15 padding и удаления занулённых крайних отсчётов выполнено; требуется golden test.

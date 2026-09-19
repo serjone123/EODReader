@@ -4,7 +4,7 @@
   плейхедом текущей позиции WAV-времени) без привязки к экранной форме.
 
   Полоса рисуется тем же движком, что и обычный TOverviewPlot на главной
-  форме (GUI.Plot.pas), поэтому её вид совпадает с тем, что пользователь
+  форме (GUI.Plot.Overview.pas), поэтому её вид совпадает с тем, что пользователь
   видит на экране (первая версия: белый фон, цвета каналов как в GUI —
   донастройка внешнего вида оставлена на будущее, см. TODO.md).
 
@@ -17,7 +17,7 @@ interface
 uses
   System.SysUtils, System.Types, System.UITypes, System.Classes,
   FMX.Graphics, FMX.Objects,
-  Core.Types, GUI.Plot;
+  Core.Types, GUI.Plot.Overview;
 
 type
   { Параметры одного прогона рендера. Данные огибающей задаются отдельно

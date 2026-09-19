@@ -161,7 +161,9 @@ Cache level 0 … N
 | `ReadEOD.dpr` | Точка входа, список всех юнитов. |
 | `uReadWavMain.pas` + `.fmx` | Главная форма `TMainForm`: вся логика UI, навигация, воспроизведение. |
 | `GUI.Model.pas` | `TEodGuiSession` — сессия поверх WAV-пары (`dmWav`) или `.eodpk` (`dmPeakFile`); единый API чтения сегментов/пиков для GUI. |
-| `GUI.Plot.pas` | `TSignalPlot` (основной график, режимы, зум/пан) и `TOverviewPlot` (обзорный график). |
+| `GUI.Plot.Base.pas` | Общий предок `TPlotBase` для обоих графиков: владение `TPaintBox`, контекстное меню (Copy/Save), `RenderToBitmap`. Общие события и `EodChannelColors`. |
+| `GUI.Plot.Signal.pas` | `TSignalPlot` (основной график, режимы, зум/пан). |
+| `GUI.Plot.Overview.pas` | `TOverviewPlot` (обзорный график). |
 | `IO.PeakStore.pas` | Формат `.eodpk` v3: чтение/запись записей пиков, страницы, многоуровневый кэш огибающей. |
 | `Signal.Peaks.pas` | `FindPeaksProminence` — O(N) поиск пиков по prominence. |
 | `Detection.Detector.pas` | `TEodDetector` — конвейер анализа (`AnalyzePeaks`), прогресс/отмена. |

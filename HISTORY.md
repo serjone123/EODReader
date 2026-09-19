@@ -20,6 +20,19 @@
 
 ## Записи
 
+### 2026-09-19 — Разделение GUI.Plot.pas на три модуля — opencode
+
+- `GUI.Plot.pas` (2920 строк) разделён на `GUI.Plot.Base.pas`
+  (`TPlotBase`, общие события `TViewChangedEvent`/`TOverviewClickEvent`/
+  `TOverviewRangeSelectedEvent`, `EodChannelColors`), `GUI.Plot.Signal.pas`
+  (`TSignalPlot`, `TPlotMode`, константы `MinViewSamples`/
+  `MaxViewSamples`/`EnvelopeResolutionLimit`) и `GUI.Plot.Overview.pas`
+  (`TOverviewPlot`). Код тел методов перенесён без изменений (механическое
+  разделение), отличие только в заголовках юнитов и `uses`.
+- Обновлены `ReadEOD.dpr`, `ReadEOD.dproj`, `uses` в `uReadWavMain.pas`
+  (`GUI.Plot.Signal` + `GUI.Plot.Overview`) и `Video.OverlayRenderer.pas`
+  (только `GUI.Plot.Overview`), таблица структуры в `README.md`.
+
 ### 2026-09-19 — Вынос оркестрации фоновых воркеров в GUI.Analysis.pas — opencode
 
 - Новый модуль `GUI.Analysis.pas` — класс `TEodAnalysisController`: владеет
