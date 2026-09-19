@@ -21,6 +21,7 @@ uses
   GUI.Playback in 'GUI.Playback.pas',
   GUI.PeakList in 'GUI.PeakList.pas',
   GUI.Analysis in 'GUI.Analysis.pas',
+  GUI.OverviewController in 'GUI.OverviewController.pas',
   IO.PeakStore in 'IO.PeakStore.pas',
   IO.SignalCache in 'IO.SignalCache.pas',
   Threads.Analysis in 'Threads.Analysis.pas',

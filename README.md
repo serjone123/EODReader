@@ -29,7 +29,8 @@
   зум колесом, панорамирование, позиционный ползунок, список пиков (окно ±100 с
   с переходами `<<` / `>>`), кнопки Prev/Next.
 - Обзорный график может рисоваться в цветах каналов (Ch1…Ch4) — включается
-  свойством `OverviewChannelColors` у `TMainForm`; поканальные огибающие строятся
+  свойством `ChannelColors` у контроллера обзора (`GUI.OverviewController`,
+  класс `TEodOverviewController`); поканальные огибающие строятся
   в `BuildOverview` (для `.eodpk` — из кэша файла), поэтому переключение режима
   не перечитывает запись. Каждый канал масштабируется по своему максимуму.
 - **Воспроизведение записи** (кнопка `Play`): плеер ведёт «виртуальное время»
@@ -164,6 +165,8 @@ Cache level 0 … N
 | `GUI.Plot.Base.pas` | Общий предок `TPlotBase` для обоих графиков: владение `TPaintBox`, контекстное меню (Copy/Save), `RenderToBitmap`. Общие события и `EodChannelColors`. |
 | `GUI.Plot.Signal.pas` | `TSignalPlot` (основной график, режимы, зум/пан). |
 | `GUI.Plot.Overview.pas` | `TOverviewPlot` (обзорный график). |
+| `GUI.Analysis.pas` | `TEodAnalysisController` — владеет фоновыми воркерами анализа и открытия WAV (`Threads.Analysis`, `Threads.WavOpen`). |
+| `GUI.OverviewController.pas` | `TEodOverviewController` — владеет обзорным графиком, огибающей и воркерами обзора WAV/EODPK (`Threads.Overview`, `Threads.PeakOverview`); статус — колбэком `OnStatus`, клики/выделения — событиями `OnClick`/`OnRangeSelected`. |
 | `IO.PeakStore.pas` | Формат `.eodpk` v3: чтение/запись записей пиков, страницы, многоуровневый кэш огибающей. |
 | `Signal.Peaks.pas` | `FindPeaksProminence` — O(N) поиск пиков по prominence. |
 | `Detection.Detector.pas` | `TEodDetector` — конвейер анализа (`AnalyzePeaks`), прогресс/отмена. |

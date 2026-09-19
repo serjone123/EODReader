@@ -244,6 +244,7 @@
         <DCCReference Include="GUI.Playback.pas"/>
         <DCCReference Include="GUI.PeakList.pas"/>
         <DCCReference Include="GUI.Analysis.pas"/>
+        <DCCReference Include="GUI.OverviewController.pas"/>
         <DCCReference Include="IO.PeakStore.pas"/>
         <DCCReference Include="IO.SignalCache.pas"/>
         <DCCReference Include="Threads.Analysis.pas"/>

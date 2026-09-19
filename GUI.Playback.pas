@@ -56,6 +56,10 @@ type
 
     procedure Start;
     procedure Stop(Finished: Boolean);
+    { Установка скорости из предустановленного набора по индексу
+      комбобокса PlaySpeed: 0..6 -> (0.1, 0.25, 0.5, 1, 2, 5, 10)x.
+      Неизвестный индекс даёт 1x. Вид индексов живёт здесь, а не на форме. }
+    procedure SetSpeedIndex(AIndex: Integer);
 
     property Session: TEodGuiSession read FSession write FSession;
     property Active: Boolean read FActive;
@@ -116,6 +120,17 @@ begin
   end;
 
   FSpeed := AValue;
+end;
+
+procedure TEodPlayer.SetSpeedIndex(AIndex: Integer);
+const
+  PresetSpeeds: array[0..6] of Double =
+    (0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0);
+begin
+  if (AIndex >= 0) and (AIndex < Length(PresetSpeeds)) then
+    Speed := PresetSpeeds[AIndex]
+  else
+    Speed := 1.0;
 end;
 
 function TEodPlayer.VirtualNow: Int64;

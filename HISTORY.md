@@ -20,6 +20,49 @@
 
 ## Записи
 
+### 2026-09-19 — Карта скоростей плейбека переехала с формы в GUI.Playback — opencode
+
+- `TMainForm.ApplyPlaybackSpeed` удалён: `TEodPlayer.SetSpeedIndex(AIndex)`
+  выполняет раскладку «индекс комбобокса → множитель (0..6 ⇒ 0.1…10x,
+  неизвестный ⇒ 1x)». `PlaySpeedBoxChange` и `FormCreate` просто передают
+  `FPlaySpeedBox.ItemIndex`. Поведение не изменилось; собрано
+  `_build.cmd` (только известные `W1000`).
+
+### 2026-09-19 — Вынос обзорного графика и его воркеров в GUI.OverviewController — opencode
+
+- Новый модуль `GUI.OverviewController.pas` — класс `TEodOverviewController`.
+  Владеет `TOverviewPlot` (создаётся из переданного `TPaintBox`), массивами
+  общей и поканальной огибающей, а также воркерами построения обзора
+  (`Threads.Overview`, `Threads.PeakOverview`). Статус отдаёт колбэком
+  `OnStatus`, клики и выделение диапазона на обзоре — событиями
+  `OnClick`/`OnRangeSelected`; реакцию (навигацию по основному графику,
+  особ. `FPlot`, `FPeakList`) оставил в форме. `Closing`/`CancelAll` и
+  `OnCloseRequest` работают так же, как у `TEodAnalysisController`.
+- `GUI.Analysis.pas` (перенос из GUI.Analysis в предыдущую запись) сокращён:
+  из `TEodAnalysisController` удалены воркеры обзора (`FOverviewThread`,
+  `FPeakOverviewThread`), события `OnOverview*`/`OnPeakOverview*`, методы
+  `StartOverview`/`StartPeakOverview`/`CancelOverview`/`CancelPeakOverview`,
+  свойства `OverviewRunning`/`PeakOverviewRunning`. Контроллер остался
+  владельцем только воркеров анализа и открытия WAV.
+- `uReadWavMain.pas`: удалены поля `FOverview`, `FOverviewMin/Max/ChMin/ChMax`,
+  `FOverviewChannelColors` и методы `StartOverview`, `OverviewProgress`,
+  `OverviewFinished`, `StartPeakOverview`, `PeakOverviewProgress`,
+  `PeakOverviewFinished`, `UpdateOverviewView`, `SetOverviewChannelColors`,
+  `ApplyOverviewLook`. Добавлено поле `FOverviewController:
+  TEodOverviewController`, создаётся в `FormCreate` с колбэками
+  `UpdateStatus`/`OverviewClick`/`OverviewRangeSelected`/`BackgroundCloseRequest`.
+  `FormDestroy`/`FormCloseQuery`, открытие WAV/`.eodpk`, видеовыпорт
+  (`btVideoExportClick` берёт огибающую из свойств контроллера) и оба
+  комбобокса (`cbBucketModeBoxChange`, `cbOverviewLookBoxChange`) делегируют
+  контроллеру.
+- Поведение сохранено: тексты статусов, отмена текущего WAV-обзора перед
+  запуском EODPK-обзора, обновление обзора при смене вида основного графика,
+  применение вида (цвета каналов / общая огибающая), закрытие формы с
+  активным воркером.
+- Проверено: `cmd /c _build.cmd` — собирается (`2169 lines, 2.70 seconds,
+  6025564 bytes code`), только известные `W1000 MessageDlg`; новых `H2219`
+  нет. Поведение проверяет serjone.
+
 ### 2026-09-19 — Разделение GUI.Plot.pas на три модуля — opencode
 
 - `GUI.Plot.pas` (2920 строк) разделён на `GUI.Plot.Base.pas`

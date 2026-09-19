@@ -218,6 +218,7 @@
 
 # Выполнено
 
+- `[x]` Вынос обзорного графика и его воркеров из `uReadWavMain.pas` в `GUI.OverviewController.pas` выполнен 2026-09-19; `GUI.Analysis.pas` сокращён до воркеров анализа и открытия WAV; подробности в `HISTORY.md`.
 - `[x]` Разделение `GUI.Plot.pas` на `GUI.Plot.Base.pas` + `GUI.Plot.Signal.pas` + `GUI.Plot.Overview.pas` выполнено 2026-09-19; подробности в `HISTORY.md`.
 - `[x]` Переименование модулей выполнено 2026-09-12; подробности в `HISTORY.md`.
 - `[x]` Оптимизация `FindPeaksProminence` до O(N) выполнена; подробности в `HISTORY.md`.

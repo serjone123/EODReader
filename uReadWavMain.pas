@@ -12,10 +12,10 @@ uses
 , IO.PeakStore
 , GUI.Model
 , GUI.Plot.Signal
-, GUI.Plot.Overview
 , GUI.Playback
 , GUI.PeakList
 , GUI.Analysis
+, GUI.OverviewController
 , Core.ConfigStore, GUI.SettingsForm
 , GUI.FileNaming
 , FMX.Menus
@@ -92,16 +92,7 @@ type
     FCurrentCount: Integer;
     FBackground: TEodAnalysisController;
 
-    FOverview: TOverviewPlot;
-
-    FOverviewMin: TFloatArray;
-    FOverviewMax: TFloatArray;
-
-    { Поканальные огибающие обзорного графика (индекс 0..3 — канал 1..4)
-      для режима OverviewChannelColors. }
-    FOverviewChMin: TChannelEnvelopes;
-    FOverviewChMax: TChannelEnvelopes;
-    FOverviewChannelColors: Boolean;
+    FOverviewController: TEodOverviewController;
 
     FPeakList: TEodPeakList;
 
@@ -111,30 +102,8 @@ type
 
     FLastDir: string;
 
-    procedure ApplyPlaybackSpeed;
-
     procedure OverviewClick(Sender: TObject; Frame: Int64);
     procedure OverviewRangeSelected(Sender: TObject; AStart, AEnd: Int64);
-
-    procedure StartOverview;
-    procedure OverviewProgress(Sender: TObject; Processed, Total: Int64);
-    procedure OverviewFinished(Sender: TObject;
-      const OverviewMin, OverviewMax: TFloatArray;
-      const ChannelMin, ChannelMax: TChannelEnvelopes;
-      TotalFrames: Int64; Canceled: Boolean;
-      const ErrorText: string);
-
-    procedure PeakOverviewProgress(Sender: TObject; Processed, Total: Int64);
-    procedure PeakOverviewFinished(Sender: TObject;
-      const OverviewMin, OverviewMax: TFloatArray;
-      const ChannelMin, ChannelMax: TChannelEnvelopes;
-      TotalFrames: Int64; Canceled: Boolean;
-      const ErrorText: string);
-    procedure StartPeakOverview(const AFileName: string);
-
-    procedure UpdateOverviewView(ViewStart, ViewEnd: Int64);
-
-    procedure SetOverviewChannelColors(AValue: Boolean);
 
     procedure UpdateStatus(const S: string);
     procedure UpdateCaption;
@@ -156,12 +125,6 @@ type
     procedure BackgroundCloseRequest(Sender: TObject);
     procedure UpdatePlotMode;
     procedure PlotViewChanged(Sender: TObject; ViewStart, ViewEnd: Int64);
-    { Обзорный график в цветах каналов 1..4 (как у основного графика).
-      Поканальные огибающие строит BuildOverview, поэтому переключение
-      не перечитывает файл. }
-    property OverviewChannelColors: Boolean
-      read FOverviewChannelColors write SetOverviewChannelColors;
-    procedure ApplyOverviewLook;
   end;
 
 var
@@ -196,10 +159,6 @@ begin
   FBackground.OnAnalysisFinished := AnalysisFinished;
   FBackground.OnOpenProgress := OpenProgress;
   FBackground.OnOpenFinished := OpenFinished;
-  FBackground.OnOverviewProgress := OverviewProgress;
-  FBackground.OnOverviewFinished := OverviewFinished;
-  FBackground.OnPeakOverviewProgress := PeakOverviewProgress;
-  FBackground.OnPeakOverviewFinished := PeakOverviewFinished;
   FBackground.OnCloseRequest := BackgroundCloseRequest;
 
   FModeBox.Items.Clear;
@@ -215,10 +174,21 @@ begin
   FPlot := TSignalPlot.Create(PaintBox);
   FPlot.OnViewChanged := PlotViewChanged;
 
-  FOverview := TOverviewPlot.Create(OverviewPaintBox);
-  FOverview.OnClick := OverviewClick;
-  FOverview.OnRangeSelected := OverviewRangeSelected;
-  FOverview.ChannelColors := FOverviewChannelColors;
+  { Обзорный график и его воркеры полностью живут в GUI.OverviewController.
+    Клики и выделения на обзоре пересылаются обратно в навигацию формы;
+    статус идёт в строку состояния. Почти все колбэки — прямые методы
+    TMainForm. }
+  FOverviewController := TEodOverviewController.Create(
+    FSession,
+    OverviewPaintBox,
+    function: Int64
+    begin
+      Result := FPlot.ViewSampleCount;
+    end,
+    UpdateStatus,
+    OverviewClick,
+    OverviewRangeSelected,
+    BackgroundCloseRequest);
 
   { edRange — производный индикатор только для чтения: End - Start.
     Обработчики назначены кодом, а не через .fmx, чтобы не зависеть от
@@ -297,11 +267,11 @@ begin
       end;
     end);
 
-  ApplyPlaybackSpeed;
+  FPlayer.SetSpeedIndex(FPlaySpeedBox.ItemIndex);
 
   FStatus.Text := '';
 
-  OverviewChannelColors :=true;
+  FOverviewController.ChannelColors := True;
 end;
 
 procedure TMainForm.FormDestroy(Sender: TObject);
@@ -312,14 +282,15 @@ begin
   FBackground.Free;
   FBackground := nil;
 
+  FOverviewController.CancelAll;
+  FOverviewController.Free;
+  FOverviewController := nil;
+
   FPlayer.Free;
   FPlayer := nil;
 
   FPeakList.Free;
   FPeakList := nil;
-
-  FOverview.Free;
-  FOverview := nil;
 
   FPlot.Free;
   FPlot := nil;
@@ -338,9 +309,10 @@ begin
   { Плеер живёт только в главном потоке — его достаточно просто остановить. }
   FPlayer.Stop(False);
 
-  if FBackground.AnyRunning then
+  if FBackground.AnyRunning or FOverviewController.AnyRunning then
   begin
     FBackground.CancelAll;
+    FOverviewController.CancelAll;
     CanClose := False;
     UpdateStatus('Stopping background operation...');
     Exit;
@@ -469,6 +441,7 @@ begin
   FSession := Session;
   FPlayer.Session := FSession;
   FPeakList.Session := FSession;
+  FOverviewController.Session := FSession;
   if FSession.TotalFrames > 0 then
   begin
     { В режиме WAV под вид выделяется сырой буфер, поэтому максимальная
@@ -478,7 +451,7 @@ begin
     FPlot.SetFullRange(0, FSession.TotalFrames - 1);
   end;
 
-  StartOverview;
+  FOverviewController.StartOverview;
   OldSession.Free;
 
   FSession.SetPeaks(nil);
@@ -505,7 +478,7 @@ begin
   if FSession.Mode = dmNone then
     Exit;
 
-  UpdateOverviewView(ViewStart, ViewEnd);
+  FOverviewController.SetViewRange(ViewStart, ViewEnd);
 
   SetRangeEdits(ViewStart, ViewEnd);
 
@@ -699,7 +672,7 @@ begin
   { Синхронизируем красный прямоугольник выделения на обзорном графике
     с новым диапазоном отображения. SetViewRange не вызывает OnViewChanged,
     поэтому обновляем обзор вручную. }
-  UpdateOverviewView(StartFrame, StartFrame + Length(Data) - 1);
+  FOverviewController.SetViewRange(StartFrame, StartFrame + Length(Data) - 1);
 
   UpdateStatus(Format('Peak %d/%d: sample %d, time %.6f s, prominence %.6f',
     [Index + 1, FSession.PeakCount, Peak.Position,
@@ -1022,23 +995,9 @@ end;
 {  Воспроизведение (код в GUI.Playback.pas — TEodPlayer)             }
 { ================================================================== }
 
-procedure TMainForm.ApplyPlaybackSpeed;
-begin
-  case FPlaySpeedBox.ItemIndex of
-    0: FPlayer.Speed := 0.1;
-    1: FPlayer.Speed := 0.25;
-    2: FPlayer.Speed := 0.5;
-    4: FPlayer.Speed := 2.0;
-    5: FPlayer.Speed := 5.0;
-    6: FPlayer.Speed := 10.0;
-  else
-    FPlayer.Speed := 1.0;
-  end;
-end;
-
 procedure TMainForm.PlaySpeedBoxChange(Sender: TObject);
 begin
-  ApplyPlaybackSpeed;
+  FPlayer.SetSpeedIndex(FPlaySpeedBox.ItemIndex);
 end;
 
 procedure TMainForm.FPlayButtonClick(Sender: TObject);
@@ -1080,7 +1039,8 @@ begin
       FPlot.SetFullRange(0, FSession.TotalFrames - 1);
     end;
 
-    StartPeakOverview(D.FileName);
+    FOverviewController.StartPeakOverview(D.FileName,
+      cbBucketModeBox.ItemIndex = 0);
 
     FCurrentPeak := -1;
 
@@ -1306,25 +1266,6 @@ begin
   {$ENDIF}
 end;
 
-procedure TMainForm.UpdateOverviewView(ViewStart, ViewEnd: Int64);
-begin
-  if not Assigned(FOverview) then
-    Exit;
-
-  if FSession.Mode = dmNone then
-    Exit;
-
-  FOverview.SetViewRange(ViewStart, ViewEnd);
-end;
-
-procedure TMainForm.SetOverviewChannelColors(AValue: Boolean);
-begin
-  FOverviewChannelColors := AValue;
-
-  if Assigned(FOverview) then
-    FOverview.ChannelColors := AValue;
-end;
-
 procedure TMainForm.OverviewClick(Sender: TObject; Frame: Int64);
 var
   ViewWidth: Int64;
@@ -1366,7 +1307,7 @@ begin
 
   { <<< FIX: восстановление рабочего диапазона отображения >>> }
   FPlot.GetViewRange(NewStart, NewEnd);
-  UpdateOverviewView(NewStart, NewEnd);
+  FOverviewController.SetViewRange(NewStart, NewEnd);
 
   { Заполняем ListBox пиками вокруг выбранной на обзоре точки
     и подсвечиваем ближайший к ней пик. }
@@ -1394,7 +1335,7 @@ begin
     ShowPeakFileRange(AStart, AEnd);
 
   FPlot.GetViewRange(ViewStart, ViewEnd);
-  UpdateOverviewView(ViewStart, ViewEnd);
+  FOverviewController.SetViewRange(ViewStart, ViewEnd);
 end;
 
 procedure TMainForm.FSettingsButtonClick(Sender: TObject);
@@ -1425,203 +1366,6 @@ begin
   end;
 end;
 
-procedure TMainForm.StartOverview;
-begin
-  if FBackground.Closing or (FSession.Mode <> dmWav) then
-    Exit;
-
-  FOverview.Clear;
-
-  UpdateStatus('Building overview in background...');
-
-  FBackground.StartOverview(FSession.File1, FSession.File2);
-end;
-
-procedure TMainForm.OverviewProgress(Sender: TObject;
-  Processed, Total: Int64);
-var
-  Percent: Integer;
-begin
-  if FBackground.Closing then
-    Exit;
-
-  if Total > 0 then
-    Percent := Round(Processed * 100.0 / Total)
-  else
-    Percent := 0;
-
-  if Percent < 0 then
-    Percent := 0
-  else if Percent > 100 then
-    Percent := 100;
-
-  UpdateStatus(Format('Building overview: %d%%', [Percent]));
-end;
-
-procedure TMainForm.OverviewFinished(Sender: TObject;
-  const OverviewMin, OverviewMax: TFloatArray;
-  const ChannelMin, ChannelMax: TChannelEnvelopes;
-  TotalFrames: Int64; Canceled: Boolean;
-  const ErrorText: string);
-begin
-  if FBackground.Closing then
-    Exit;
-
-  if Canceled then
-  begin
-    UpdateStatus('Overview building cancelled.');
-    Exit;
-  end;
-
-  if ErrorText <> '' then
-  begin
-    UpdateStatus('Overview error: ' + ErrorText);
-    Exit;
-  end;
-
-  FOverviewMin := Copy(OverviewMin);
-  FOverviewMax := Copy(OverviewMax);
-  FOverviewChMin := ChannelMin;
-  FOverviewChMax := ChannelMax;
-
-  FOverview.SetData(
-    FOverviewMin,
-    FOverviewMax,
-    0,
-    TotalFrames - 1);
-
-  FOverview.SetChannelData(
-    FOverviewChMin,
-    FOverviewChMax,
-    0,
-    TotalFrames - 1);
-
-  FOverview.SetViewRange(
-    0,
-    Min(TotalFrames - 1, FPlot.ViewSampleCount));
-
-  ApplyOverviewLook;
-
-  UpdateStatus(Format(
-    'WAV: %.3f sec, %d Hz, %d frames',
-    [FSession.TotalFrames / FSession.SampleRate,
-     FSession.SampleRate,
-     FSession.TotalFrames]));
-end;
-
-procedure TMainForm.StartPeakOverview(const AFileName: string);
-var
-  Ch: Integer;
-begin
-  if FBackground.Closing then
-    Exit;
-
-  if FBackground.OverviewRunning then
-  begin
-    FBackground.CancelOverview;
-    Exit;
-  end;
-
-  if AFileName = '' then
-    Exit;
-
-  FOverviewMin := nil;
-  FOverviewMax := nil;
-
-  for Ch := 0 to 3 do
-  begin
-    FOverviewChMin[Ch] := nil;
-    FOverviewChMax[Ch] := nil;
-  end;
-
-  UpdateStatus('Building EODPK overview...');
-
-  FBackground.StartPeakOverview(AFileName, cbBucketModeBox.ItemIndex = 0);
-end;
-
-procedure TMainForm.PeakOverviewFinished(Sender: TObject;
-  const OverviewMin, OverviewMax: TFloatArray;
-  const ChannelMin, ChannelMax: TChannelEnvelopes;
-  TotalFrames: Int64; Canceled: Boolean;
-  const ErrorText: string);
-var
-  I: Integer;
-begin
-  if FBackground.Closing then
-    Exit;
-
-  if Canceled then
-  begin
-    UpdateStatus('EODPK overview cancelled.');
-    Exit;
-  end;
-
-  if ErrorText <> '' then
-  begin
-    UpdateStatus('EODPK overview error: ' + ErrorText);
-    Exit;
-  end;
-
-  FOverviewMin := OverviewMin;
-  FOverviewMax := OverviewMax;
-
-  for I := 0 to 3 do
-  begin
-    FOverviewChMin[I] := ChannelMin[I];
-    FOverviewChMax[I] := ChannelMax[I];
-  end;
-
-  if (TotalFrames > 0) and (Length(FOverviewMin) > 0) then
-    begin
-      FOverview.SetData(
-        FOverviewMin,
-        FOverviewMax,
-        0,
-        TotalFrames - 1);
-
-      FOverview.SetChannelData(
-        FOverviewChMin,
-        FOverviewChMax,
-        0,
-        TotalFrames - 1);
-
-      FOverview.SetViewRange(
-        0,
-        Min(TotalFrames - 1, FPlot.ViewSampleCount));
-    end;
-
-
-//  FOverview.ChannelColors := FOverviewChannelColors;
-  ApplyOverviewLook;
-  if (TotalFrames > 0) and (Length(FOverviewMin) > 0) then
-    UpdateOverviewView(0, TotalFrames - 1);
-
-  UpdateStatus(Format('EODPK overview ready: %d frames',
-    [TotalFrames]));
-end;
-
-
-procedure TMainForm.PeakOverviewProgress(Sender: TObject; Processed,
-  Total: Int64);
-var
-  Percent: Integer;
-begin
-  if FBackground.Closing then
-    Exit;
-
-  if Total > 0 then
-    Percent := Round(Processed * 100.0 / Total)
-  else
-    Percent := 0;
-
-  if Percent < 0 then
-    Percent := 0
-  else if Percent > 100 then
-    Percent := 100;
-
-  UpdateStatus(Format('Building overview: %d%%', [Percent]));
-end;
-
 procedure TMainForm.btGeometryClick(Sender: TObject);
 begin
   ShowElectrodeLayoutForm
@@ -1637,23 +1381,22 @@ begin
     Exit;
   end;
 
-  if Length(FOverviewMin) = 0 then
+  if not FOverviewController.HasEnvelope then
   begin
     UpdateStatus('Обзорный график ещё не построен — дождитесь его загрузки.');
     Exit;
   end;
 
   { Экспорт видео использует уже посчитанную для экранного обзорного
-    графика огибающую (FOverviewMin/Max/ChMin/ChMax) — тот же массив,
-    что рисует FOverview на главной форме, повторный проход по файлу
-    не требуется. }
+    графика огибающую (контроллер обзора) — тот же массив, что рисует
+    обзор на главной форме, повторный проход по файлу не требуется. }
   SessionData.SampleRate := FSession.SampleRate;
   SessionData.TotalFrames := FSession.TotalFrames;
-  SessionData.EnvelopeMin := FOverviewMin;
-  SessionData.EnvelopeMax := FOverviewMax;
-  SessionData.ChannelMin := FOverviewChMin;
-  SessionData.ChannelMax := FOverviewChMax;
-  SessionData.ChannelColors := FOverviewChannelColors;
+  SessionData.EnvelopeMin := FOverviewController.EnvelopeMin;
+  SessionData.EnvelopeMax := FOverviewController.EnvelopeMax;
+  SessionData.ChannelMin := FOverviewController.ChannelMin;
+  SessionData.ChannelMax := FOverviewController.ChannelMax;
+  SessionData.ChannelColors := FOverviewController.ChannelColors;
 
   ShowVideoExportForm(Self, SessionData);
 
@@ -1664,37 +1407,13 @@ begin
   { Режим бакетов применяется при построении обзора EODPK, поэтому
     строим заново (для EODPK это быстрое чтение кэша). }
   if FSession.Mode = dmPeakFile then
-    StartPeakOverview(FSession.PeakFile);
+    FOverviewController.StartPeakOverview(FSession.PeakFile,
+      cbBucketModeBox.ItemIndex = 0);
 end;
 
 procedure TMainForm.cbOverviewLookBoxChange(Sender: TObject);
 begin
-  ApplyOverviewLook;
-end;
-
-procedure TMainForm.ApplyOverviewLook;
-begin
-  if not Assigned(FOverview) then
-    Exit;
-
-  { Обзор ещё не построен — запоминаем только режим цвета. }
-  if (Length(FOverviewChMin[0]) = 0) or (FSession.TotalFrames <= 0) then
-  begin
-    OverviewChannelColors := cbOverviewLookBox.ItemIndex = 0;
-    Exit;
-  end;
-
-  if cbOverviewLookBox.ItemIndex = 0 then
-    OverviewChannelColors := True
-  else
-  begin
-    { Общая огибающая выводится из поканальной — пересчёт обзора не нужен. }
-    BuildGeneralEnvelope(FOverviewChMin, FOverviewChMax,
-      cbOverviewLookBox.ItemIndex = 1, FOverviewMin, FOverviewMax);
-    FOverview.SetData(FOverviewMin, FOverviewMax, 0,
-      FSession.TotalFrames - 1);
-    OverviewChannelColors := False;
-  end;
+  FOverviewController.SetOverviewLook(cbOverviewLookBox.ItemIndex);
 end;
 
 procedure TMainForm.lbPeakListClick(Sender: TObject);
