@@ -34,7 +34,7 @@ type
     FOpenFolderButton: TButton;
     FApplyButton: TButton;
     FPositionBar: TTrackBar;
-    FPeakList: TListBox;
+    lbPeakList: TListBox;
     edStartSample: TEdit;
     edRange: TEdit;
     FStatus: TLabel;
@@ -50,8 +50,13 @@ type
     MainMenu1: TMainMenu;
     btGeometry: TButton;
     btVideoExport: TButton;
+    layLeft: TLayout;
+    cbBucketModeBox: TComboBox;
+    cbOverviewLookBox: TComboBox;
     procedure btGeometryClick(Sender: TObject);
     procedure btVideoExportClick(Sender: TObject);
+    procedure cbBucketModeBoxChange(Sender: TObject);
+    procedure cbOverviewLookBoxChange(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure FAnalyzeButtonClick(Sender: TObject);
@@ -61,8 +66,7 @@ type
     procedure FOpenPeakButtonClick(Sender: TObject);
     procedure FOpenWavButtonClick(Sender: TObject);
     procedure FormCloseQuery(Sender: TObject; var CanClose: Boolean);
-    procedure FPeakListClick(Sender: TObject);
-    procedure FPeakListMouseDown(Sender: TObject; Button: TMouseButton;
+    procedure lbPeakListMouseDown(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: Single);
     procedure FPositionBarChange(Sender: TObject);
     procedure FPrevButtonClick(Sender: TObject);
@@ -74,6 +78,7 @@ type
     procedure edEndSampleChange(Sender: TObject);
     procedure FSettingsButtonClick(Sender: TObject);
     procedure FPlayButtonClick(Sender: TObject);
+    procedure lbPeakListClick(Sender: TObject);
     procedure PlaySpeedBoxChange(Sender: TObject);
   private
     FSession: TEodGuiSession;
@@ -131,8 +136,6 @@ type
     procedure OverviewClick(Sender: TObject; Frame: Int64);
     procedure OverviewRangeSelected(Sender: TObject; AStart, AEnd: Int64);
 
-    procedure BuildOverview;
-
     procedure StartOverview;
     procedure OverviewProgress(Sender: TObject; Processed, Total: Int64);
     procedure OverviewFinished(Sender: TObject;
@@ -161,7 +164,6 @@ type
     procedure ShowPeak(Index: Integer);
     procedure ShowRawPosition(AStartFrame, AEndFrame: Int64);
     procedure ShowPeakFileRange(AStartFrame, AEndFrame: Int64);
-    procedure ShowCurrentRange;
     function CurrentFrame: Int64;
     function ReadInt64Edit(AEdit: TEdit; const ADefault: Int64): Int64;
     procedure SetRangeEdits(AStart, AEnd: Int64);
@@ -181,13 +183,12 @@ type
     procedure SetAnalysisUiState(Analyzing: Boolean);
     procedure UpdatePlotMode;
     procedure PlotViewChanged(Sender: TObject; ViewStart, ViewEnd: Int64);
-    // function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer; var Handled: Boolean): Boolean; override;
-
     { Обзорный график в цветах каналов 1..4 (как у основного графика).
       Поканальные огибающие строит BuildOverview, поэтому переключение
       не перечитывает файл. }
     property OverviewChannelColors: Boolean
       read FOverviewChannelColors write SetOverviewChannelColors;
+    procedure ApplyOverviewLook;
   end;
 
 var
@@ -239,9 +240,9 @@ begin
   FOverview.OnRangeSelected := OverviewRangeSelected;
   FOverview.ChannelColors := FOverviewChannelColors;
 
-  { edRange is a derived/read-only indicator: End - Start.
-    Wired in code (not the .dfm) so this doesn't depend on the form
-    designer having these OnChange handlers assigned already. }
+  { edRange — производный индикатор только для чтения: End - Start.
+    Обработчики назначены кодом, а не через .fmx, чтобы не зависеть от
+    того, привязал ли их дизайнер формы. }
   edRange.ReadOnly := True;
   edStartSample.OnChange := edStartSampleChange;
   edEndSample.OnChange := edEndSampleChange;
@@ -287,8 +288,8 @@ procedure TMainForm.FormDestroy(Sender: TObject);
 begin
   FClosing := True;
 
-  { Normally FAnalysis is already nil here. The close query prevents us
-    from reaching FormDestroy while a worker is active. }
+  { Обычно к этому моменту FAnalysis уже nil: FormCloseQuery не даёт дойти
+    до FormDestroy, пока работает воркер. }
   if Assigned(FAnalysis) then
     FAnalysis.Cancel;
   if Assigned(FOpenThread) then
@@ -345,14 +346,14 @@ begin
   begin
     FSession.SetPeaks(nil);
     FCurrentPeak := -1;
-    FPeakList.Clear;
+    lbPeakList.Clear;
     UpdateStatus('Analysis cancelled.');
   end
   else if ErrorText <> '' then
   begin
     FSession.SetPeaks(nil);
     FCurrentPeak := -1;
-    FPeakList.Clear;
+    lbPeakList.Clear;
     UpdateStatus('Analysis error: ' + ErrorText);
   end
   else
@@ -393,8 +394,8 @@ end;
 
 procedure TMainForm.AnalysisThreadTerminated(Sender: TObject);
 begin
-  { The worker uses FreeOnTerminate=True. OnTerminate is only for clearing
-    our reference and, when requested, allowing the form to close. }
+  { Воркер работает с FreeOnTerminate=True. OnTerminate нужен только чтобы
+    сбросить нашу ссылку и, если запрошено, дать форме закрыться. }
   if FAnalysis = Sender then
     FAnalysis := nil;
 
@@ -466,13 +467,13 @@ begin
   FSession := Session;
   if FSession.TotalFrames > 0 then
   begin
-    { WAV mode allocates a raw buffer matching the view, so the maximum
-      view width must stay bounded to avoid huge allocations on zoom-out. }
+    { В режиме WAV под вид выделяется сырой буфер, поэтому максимальная
+      ширина вида ограничена — иначе при отдалении будут огромные
+      аллокации. }
     FPlot.SetMaxViewSamples(MaxViewSamples);
     FPlot.SetFullRange(0, FSession.TotalFrames - 1);
   end;
 
-  //BuildOverview;
   StartOverview;
   OldSession.Free;
 
@@ -582,7 +583,7 @@ begin
 
   if Total <= 0 then
   begin
-    FPeakList.Clear;
+    lbPeakList.Clear;
     FPeakListFirstIndex := 0;
     FPeakListRealCount := 0;
     Exit;
@@ -656,15 +657,6 @@ begin
     Result := 0;
 end;
 
-// procedure TMainForm.edStartSampleMouseWheel(Sender: TObject; Shift: TShiftState;
-// WheelDelta: Integer; var Handled: Boolean);
-// begin
-// case WheelDelta>0 of
-// true : FPrevButtonClick(self) ;
-// false: FNextButtonClick(self) ;
-// end;
-// Handled:=false;
-// end;
 procedure TMainForm.edStartSampleMouseWheel(Sender: TObject; Shift: TShiftState;
   WheelDelta: Integer; var Handled: Boolean);
 const
@@ -695,7 +687,6 @@ var
   Std: TFloatArray;
   Fir: TFloatArray;
   Range: Integer;
-  PeakPositions: TArray<Int64>;
 begin
   if (Index < 0) or (Index >= FSession.PeakCount) then
     Exit;
@@ -732,9 +723,6 @@ begin
   FPlot.SetFir(Fir, StartFrame, FSession.SampleRate, Peak.Position,
     'FIR15 around peak');
 
-  // PeakPositions := FSession.PeakPositions;
-  // FPlot.SetPeakPositions(PeakPositions);
-  // FPlot.SetPeakPositions(nil);
   UpdatePlotMode;
 
   FPlot.SetViewRange(StartFrame, StartFrame + Length(Data) - 1);
@@ -792,7 +780,7 @@ begin
   Count64 := EndFrame - StartFrame + 1;
 
   { ------------------------------------------------------------ }
-  { Small range: keep exact waveform behaviour. }
+  { Малый диапазон: сохраняем точный вид сигнала. }
   { ------------------------------------------------------------ }
 
   if Count64 <= RawLimit then
@@ -856,7 +844,7 @@ begin
   end;
 
   { ------------------------------------------------------------ }
-  { Large range: NEVER allocate TAudioChunk for the range. }
+  { Большой диапазон: TAudioChunk под диапазон НЕ создаём никогда. }
   { ------------------------------------------------------------ }
 
   if not FSession.ReadPeakEnvelope(StartFrame, EndFrame, MaxEnvelopePoints,
@@ -873,7 +861,7 @@ begin
   FPlot.SetViewRange(StartFrame, EndFrame);
   FPlot.SetHistogramRange(StartFrame, EndFrame);
 
-  { STD/FIR are not meaningful here without reconstructing raw data. }
+  { STD/FIR здесь бессмысленны без восстановления сырого сигнала. }
   FPlot.SetStd(nil, StartFrame, FSession.SampleRate, -1, 'STD');
 
   FPlot.SetFir(nil, StartFrame, FSession.SampleRate, -1, 'FIR15');
@@ -976,7 +964,7 @@ begin
   if Assigned(FAnalysis) then
     Exit;
 
-  FPeakList.Clear;
+  lbPeakList.Clear;
   FSession.SetPeaks(nil);
   FCurrentPeak := -1;
 
@@ -992,22 +980,14 @@ begin
   FAnalysis.Start;
 end;
 
-procedure TMainForm.ShowCurrentRange;
-begin
-  if FSession.Mode = dmWav then
-    ShowRawPosition(CurrentFrame, CurrentFrame + Max(0, FCurrentCount - 1))
-  else if FSession.Mode = dmPeakFile then
-    ShowPeakFileRange(ReadInt64Edit(edStartSample, 0),
-      ReadInt64Edit(edEndSample, ReadInt64Edit(edStartSample, 0)));
-end;
 
 procedure TMainForm.FAnalyzeButtonClick(Sender: TObject);
 var
   SecondsText: string;
   MaxFrames: Int64;
 begin
-  { The same button is used as an immediate cancel command while the
-    worker is running. We never WaitFor here, so the GUI remains responsive. }
+  { Та же кнопка служит командой немедленной отмены, пока работает воркер.
+    WaitFor здесь не вызываем — интерфейс остаётся отзывчивым. }
   if Assigned(FAnalysis) then
   begin
     FAnalysis.Cancel;
@@ -1285,14 +1265,13 @@ begin
 
     if FSession.TotalFrames > 0 then
     begin
-      { EODPK draws only from the compact envelope (never a full raw
-        buffer), so the whole file may be displayed at once. Allow the
-        view to be zoomed all the way out to the entire file. }
+      { EODPK рисуется только по компактной огибающей (полный сырой буфер
+        не создаётся), поэтому файл можно показать целиком. Разрешаем
+        отдалять вид до всего файла. }
       FPlot.SetMaxViewSamples(FSession.TotalFrames);
       FPlot.SetFullRange(0, FSession.TotalFrames - 1);
     end;
 
-    //BuildOverview;
     StartPeakOverview(D.FileName);
 
     FCurrentPeak := -1;
@@ -1301,7 +1280,7 @@ begin
 
     if FSession.PeakCount > 0 then
     begin
-      StartFrame := FSession.GetPeakPosition(0) - 200;;
+      StartFrame := FSession.GetPeakPosition(0) - 200;
       if StartFrame < 0 then
         StartFrame := 0;
       EndFrame := FSession.GetPeakPosition(0) + 200;
@@ -1316,9 +1295,6 @@ begin
       SetRangeEdits(0, 200);
     end;
 
-    // UpdateStatus(Format(
-    // 'EODPK: %d peaks, %d Hz',
-    // [FSession.PeakCount, FSession.SampleRate]));
     UpdateStatus(Format('EODPK ver %d: %d peaks, %d Hz, %d frames',
       [FSession.Version, FSession.PeakCount, FSession.SampleRate,
       FSession.TotalFrames]));
@@ -1386,8 +1362,6 @@ begin
   end;
 
   FOpenThread := TEodWavOpenThread.Create(File1, File2, OpenProgress, OpenFinished);
-//  FOpenThread.OnProgress := OpenProgress;
-//  FOpenThread.OnFinished := OpenFinished;
   FOpenThread.OnTerminate := OpenThreadTerminated;
   FOpenThread.Start;
 
@@ -1398,59 +1372,19 @@ begin
   UpdateStatus('Opening WAV in background...');
 end;
 
-procedure TMainForm.FPeakListClick(Sender: TObject);
-var
-  PeakIndex: Integer;
-  S: string;
-begin
-  if FPeakList.ItemIndex < 0 then
-    Exit;
-
-  S := FPeakList.Items[FPeakList.ItemIndex];
-
-  { Обработка навигационных элементов }
-  if S.StartsWith('<<') then
-  begin
-    { Листаем назад: предыдущее окно, крайний правый реальный элемент }
-    PeakIndex := Max(0, FPeakListFirstIndex - 1);
-    ShowPeak(PeakIndex);
-    Exit;
-  end;
-
-  if S.StartsWith('>>') then
-  begin
-    { Листаем вперёд: следующее окно, крайний левый реальный элемент }
-    PeakIndex := Min(FSession.PeakCount - 1, FPeakListFirstIndex +
-      FPeakListRealCount);
-    ShowPeak(PeakIndex);
-    Exit;
-  end;
-
-  { Обычный пик }
-  PeakIndex := FPeakListFirstIndex + FPeakList.ItemIndex;
-  if FPeakListFirstIndex > 0 then
-    Dec(PeakIndex); // компенсация элемента "<<"
-
-  if (PeakIndex >= 0) and (PeakIndex < FSession.PeakCount) then
-  begin
-    FCurrentPeak := PeakIndex;
-    ShowPeak(PeakIndex);
-  end;
-end;
-
-procedure TMainForm.FPeakListMouseDown(Sender: TObject; Button: TMouseButton;
+procedure TMainForm.lbPeakListMouseDown(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Single);
 var
   S: string;
 begin
-  if (Button <> TMouseButton.mbRight) or (FPeakList.Selected = nil) then
+  if (Button <> TMouseButton.mbRight) or (lbPeakList.Selected = nil) then
     Exit;
 
-  S := FPeakList.Selected.Text;
+  S := lbPeakList.Selected.Text;
   if S.StartsWith('<<') or S.StartsWith('>>') then
     Exit;
 
-  { edEndSample.OnChange (edEndSampleChange) recomputes edRange automatically. }
+  { edEndSample.OnChange (edEndSampleChange) сам пересчитает edRange. }
   edEndSample.Text := S;
 end;
 
@@ -1575,294 +1509,6 @@ begin
   {$ENDIF}
 end;
 
-procedure TMainForm.BuildOverview;
-const
-  OverviewPoints = 2000;
-  ChunkSize = 65536;
-var
-  TotalFrames: Int64;
-  I, J: Integer;
-  N: Integer;
-  StartFrame: Int64;
-  EndFrame: Int64;
-  Count64: Int64;
-  Data: TAudioChunk;
-
-  BinStart: Int64;
-  BinEnd: Int64;
-
-  VMin, VMax: Single;
-  V: Single;
-
-  P: TPeak;
-
-  { Поканальные min/max текущего бина. }
-  Ch: Integer;
-  ChInit: Boolean;
-  ChMin: array[0..3] of Single;
-  ChMax: array[0..3] of Single;
-
-  Envelope: TWaveEnvelope;
-  B, B0, B1: Integer;
-
-  function FrameValue(const AFrame: TAudioFrame): Single;
-  var
-    A1, A2, A3, A4: Single;
-  begin
-    A1 := Abs(AFrame.Ch1);
-    A2 := Abs(AFrame.Ch2);
-    A3 := Abs(AFrame.Ch3);
-    A4 := Abs(AFrame.Ch4);
-
-    Result := Max(Max(A1, A2), Max(A3, A4));
-  end;
-
-  procedure ResetChannelBin;
-  var
-    C: Integer;
-  begin
-    ChInit := False;
-
-    for C := 0 to 3 do
-    begin
-      ChMin[C] := 0;
-      ChMax[C] := 0;
-    end;
-  end;
-
-  { Вызывается на каждый сэмпл всей записи, поэтому без циклов и вызовов
-    на канал — только сравнения. }
-  procedure AddChannelFrame(const AFrame: TAudioFrame);
-  begin
-    if ChInit then
-    begin
-      if AFrame.Ch1 < ChMin[0] then ChMin[0] := AFrame.Ch1;
-      if AFrame.Ch1 > ChMax[0] then ChMax[0] := AFrame.Ch1;
-
-      if AFrame.Ch2 < ChMin[1] then ChMin[1] := AFrame.Ch2;
-      if AFrame.Ch2 > ChMax[1] then ChMax[1] := AFrame.Ch2;
-
-      if AFrame.Ch3 < ChMin[2] then ChMin[2] := AFrame.Ch3;
-      if AFrame.Ch3 > ChMax[2] then ChMax[2] := AFrame.Ch3;
-
-      if AFrame.Ch4 < ChMin[3] then ChMin[3] := AFrame.Ch4;
-      if AFrame.Ch4 > ChMax[3] then ChMax[3] := AFrame.Ch4;
-    end
-    else
-    begin
-      ChMin[0] := AFrame.Ch1;
-      ChMax[0] := AFrame.Ch1;
-
-      ChMin[1] := AFrame.Ch2;
-      ChMax[1] := AFrame.Ch2;
-
-      ChMin[2] := AFrame.Ch3;
-      ChMax[2] := AFrame.Ch3;
-
-      ChMin[3] := AFrame.Ch4;
-      ChMax[3] := AFrame.Ch4;
-    end;
-
-    ChInit := True;
-  end;
-
-  function FrameToBin(AFrame: Int64): Integer;
-  begin
-    if TotalFrames <= 1 then
-      Result := 0
-    else
-      Result := EnsureRange(
-        Integer((AFrame * N) div TotalFrames), 0, N - 1);
-  end;
-
-  procedure UpdateChannelBin(ABin, AChannel: Integer;
-    AChMin, AChMax: Single);
-  begin
-    { Пустой бакет кэша: min/max остались в начальных значениях. }
-    if AChMin > AChMax then
-      Exit;
-
-    if AChMin < FOverviewChMin[AChannel][ABin] then
-      FOverviewChMin[AChannel][ABin] := AChMin;
-
-    if AChMax > FOverviewChMax[AChannel][ABin] then
-      FOverviewChMax[AChannel][ABin] := AChMax;
-  end;
-
-begin
-  if not Assigned(FOverview) then
-    Exit;
-
-  if FSession.Mode = dmNone then
-  begin
-    FOverview.Clear;
-    Exit;
-  end;
-
-  TotalFrames := FSession.TotalFrames;
-
-  if TotalFrames <= 0 then
-  begin
-    FOverview.Clear;
-    Exit;
-  end;
-
-  N := OverviewPoints;
-
-  if TotalFrames < N then
-    N := Integer(TotalFrames);
-
-  if N < 1 then
-    Exit;
-
-  SetLength(FOverviewMin, N);
-  SetLength(FOverviewMax, N);
-
-  for I := 0 to N - 1 do
-  begin
-    FOverviewMin[I] := 0;
-    FOverviewMax[I] := 0;
-  end;
-
-  for Ch := 0 to 3 do
-  begin
-    SetLength(FOverviewChMin[Ch], N);
-    SetLength(FOverviewChMax[Ch], N);
-
-    for I := 0 to N - 1 do
-    begin
-      FOverviewChMin[Ch][I] := 0;
-      FOverviewChMax[Ch][I] := 0;
-    end;
-  end;
-
-  { --------------------------------------------------------------- }
-  { WAV }
-  { --------------------------------------------------------------- }
-
-  if FSession.Mode = dmWav then
-  begin
-    for I := 0 to N - 1 do
-    begin
-      BinStart := (Int64(I) * TotalFrames) div N;
-
-      BinEnd := (Int64(I + 1) * TotalFrames) div N - 1;
-
-      if BinEnd < BinStart then
-        BinEnd := BinStart;
-
-      VMin := 0;
-      VMax := 0;
-
-      ResetChannelBin;
-
-      StartFrame := BinStart;
-
-      while StartFrame <= BinEnd do
-      begin
-        EndFrame := Min(BinEnd, StartFrame + ChunkSize - 1);
-
-        Count64 := EndFrame - StartFrame + 1;
-
-        if Count64 > MaxInt then
-          Break;
-
-        Data := FSession.ReadSegment(StartFrame, Integer(Count64), False);
-
-        for J := 0 to Length(Data) - 1 do
-        begin
-          V := FrameValue(Data[J]);
-
-          if J = 0 then
-          begin
-            VMin := V;
-            VMax := V;
-          end
-          else
-          begin
-            if V < VMin then
-              VMin := V;
-
-            if V > VMax then
-              VMax := V;
-          end;
-
-          AddChannelFrame(Data[J]);
-        end;
-
-        StartFrame := EndFrame + 1;
-      end;
-
-      FOverviewMin[I] := -VMax;
-      FOverviewMax[I] := VMax;
-
-      for Ch := 0 to 3 do
-      begin
-        FOverviewChMin[Ch][I] := ChMin[Ch];
-        FOverviewChMax[Ch][I] := ChMax[Ch];
-      end;
-    end;
-  end
-
-  { --------------------------------------------------------------- }
-  { EODPK }
-  { --------------------------------------------------------------- }
-
-  else if FSession.Mode = dmPeakFile then
-  begin
-    { Для EODPK используем peak records как источник сигнала. }
-
-    for I := 0 to FSession.PeakCount - 1 do
-    begin
-      if not FSession.GetPeak(I, P) then
-        Continue;
-
-      if FSession.TotalFrames <= 1 then
-        J := 0
-      else
-        J := EnsureRange(Integer((P.Position * N) div TotalFrames), 0, N - 1);
-
-      V := Abs(P.Value);
-
-      if V > FOverviewMax[J] then
-        FOverviewMax[J] := V;
-
-      if -V < FOverviewMin[J] then
-        FOverviewMin[J] := -V;
-    end;
-
-    { Поканальные огибающие берём из кэша файла: он хранит min/max по
-      каждому каналу. Если кэша нет, массивы останутся нулевыми, и режим
-      "в цветах каналов" покажет обычную серую огибающую. }
-    if FSession.ReadPeakEnvelope(0, TotalFrames - 1, N, Envelope) then
-    begin
-      for I := 0 to High(Envelope) do
-      begin
-        if Envelope[I].EndPosition < Envelope[I].StartPosition then
-          Continue;
-
-        B0 := FrameToBin(Envelope[I].StartPosition);
-        B1 := FrameToBin(Envelope[I].EndPosition);
-
-        for B := B0 to B1 do
-        begin
-          UpdateChannelBin(B, 0, Envelope[I].Ch1Min, Envelope[I].Ch1Max);
-          UpdateChannelBin(B, 1, Envelope[I].Ch2Min, Envelope[I].Ch2Max);
-          UpdateChannelBin(B, 2, Envelope[I].Ch3Min, Envelope[I].Ch3Max);
-          UpdateChannelBin(B, 3, Envelope[I].Ch4Min, Envelope[I].Ch4Max);
-        end;
-      end;
-    end;
-  end;
-
-  FOverview.SetData(FOverviewMin, FOverviewMax, 0, TotalFrames - 1);
-
-  FOverview.SetChannelData(
-    FOverviewChMin, FOverviewChMax, 0, TotalFrames - 1);
-
-  FOverview.SetViewRange(0, Min(TotalFrames - 1, FPlot.ViewSampleCount));
-end;
-
 procedure TMainForm.UpdateOverviewView(ViewStart, ViewEnd: Int64);
 begin
   if not Assigned(FOverview) then
@@ -1962,7 +1608,7 @@ var
 begin
   if Length(Peaks) = 0 then
   begin
-    FPeakList.Clear;
+    lbPeakList.Clear;
     FPeakListFirstIndex := 0;
     FPeakListRealCount := 0;
     Exit;
@@ -1974,22 +1620,22 @@ begin
 
   FPeakListRealCount := Length(Peaks);
 
-  FPeakList.BeginUpdate;
+  lbPeakList.BeginUpdate;
   try
-    FPeakList.Clear;
+    lbPeakList.Clear;
 
     { Ссылка "<<" в начало, если перед окном есть ещё элементы }
     if FirstIndex > 0 then
-      FPeakList.Items.Add(Format('<<  (%d more)', [FirstIndex]));
+      lbPeakList.Items.Add(Format('<<  (%d more)', [FirstIndex]));
 
     for I := 0 to High(Peaks) do
-      FPeakList.Items.Add(Peaks[I].Position.ToString);
+      lbPeakList.Items.Add(Peaks[I].Position.ToString);
 
     { Ссылка ">>" в конец, если после окна есть ещё элементы }
     if LastIndex < Total - 1 then
-      FPeakList.Items.Add(Format('>>  (%d more)', [Total - 1 - LastIndex]));
+      lbPeakList.Items.Add(Format('>>  (%d more)', [Total - 1 - LastIndex]));
   finally
-    FPeakList.EndUpdate;
+    lbPeakList.EndUpdate;
   end;
 end;
 
@@ -2015,7 +1661,7 @@ begin
 
   if Total <= 0 then
   begin
-    FPeakList.Clear;
+    lbPeakList.Clear;
     FPeakListFirstIndex := 0;
     FPeakListRealCount := 0;
     Exit;
@@ -2066,7 +1712,6 @@ begin
 
     if Distance < BestDistance then
     begin
-      BestDistance := Distance;
       BestIndex := L - 1;
     end;
   end;
@@ -2086,8 +1731,8 @@ begin
       Inc(ListIndex);
 
     if (ListIndex >= 0) and
-       (ListIndex < FPeakList.Count) then
-      FPeakList.ItemIndex := ListIndex;
+       (ListIndex < lbPeakList.Count) then
+      lbPeakList.ItemIndex := ListIndex;
 
     Exit;
   end;
@@ -2129,8 +1774,8 @@ begin
       Inc(ListIndex);
 
     if (ListIndex >= 0) and
-       (ListIndex < FPeakList.Count) then
-      FPeakList.ItemIndex := ListIndex;
+       (ListIndex < lbPeakList.Count) then
+      lbPeakList.ItemIndex := ListIndex;
   end;
 end;
 
@@ -2247,6 +1892,8 @@ begin
     0,
     Min(TotalFrames - 1, FPlot.ViewSampleCount));
 
+  ApplyOverviewLook;
+
   UpdateStatus(Format(
     'WAV: %.3f sec, %d Hz, %d frames',
     [FSession.TotalFrames / FSession.SampleRate,
@@ -2279,6 +1926,10 @@ begin
   if AFileName = '' then
     Exit;
 
+  { Предыдущий расчёт (например, при смене режима бакетов) отменяем. }
+  if Assigned(FPeakOverviewThread) then
+    FPeakOverviewThread.Cancel;
+
   FOverviewMin := nil;
   FOverviewMax := nil;
 
@@ -2291,6 +1942,7 @@ begin
   UpdateStatus('Building EODPK overview...');
 
   FPeakOverviewThread := TEodPeakOverviewThread.Create(AFileName, 2000);
+  FPeakOverviewThread.SpreadBuckets := cbBucketModeBox.ItemIndex = 0;
   FPeakOverviewThread.OnProgress := PeakOverviewProgress;
   FPeakOverviewThread.OnFinished := PeakOverviewFinished;
   FPeakOverviewThread.OnTerminate := PeakOverviewThreadTerminated;
@@ -2349,8 +2001,8 @@ begin
     end;
 
 
-  FOverview.ChannelColors := FOverviewChannelColors;
-
+//  FOverview.ChannelColors := FOverviewChannelColors;
+  ApplyOverviewLook;
   if (TotalFrames > 0) and (Length(FOverviewMin) > 0) then
     UpdateOverviewView(0, TotalFrames - 1);
 
@@ -2424,6 +2076,79 @@ begin
 
   ShowVideoExportForm(Self, SessionData);
 
+end;
+
+procedure TMainForm.cbBucketModeBoxChange(Sender: TObject);
+begin
+  { Режим бакетов применяется при построении обзора EODPK, поэтому
+    строим заново (для EODPK это быстрое чтение кэша). }
+  if FSession.Mode = dmPeakFile then
+    StartPeakOverview(FSession.PeakFile);
+end;
+
+procedure TMainForm.cbOverviewLookBoxChange(Sender: TObject);
+begin
+  ApplyOverviewLook;
+end;
+
+procedure TMainForm.ApplyOverviewLook;
+begin
+  if not Assigned(FOverview) then
+    Exit;
+
+  { Обзор ещё не построен — запоминаем только режим цвета. }
+  if (Length(FOverviewChMin[0]) = 0) or (FSession.TotalFrames <= 0) then
+  begin
+    OverviewChannelColors := cbOverviewLookBox.ItemIndex = 0;
+    Exit;
+  end;
+
+  if cbOverviewLookBox.ItemIndex = 0 then
+    OverviewChannelColors := True
+  else
+  begin
+    { Общая огибающая выводится из поканальной — пересчёт обзора не нужен. }
+    BuildGeneralEnvelope(FOverviewChMin, FOverviewChMax,
+      cbOverviewLookBox.ItemIndex = 1, FOverviewMin, FOverviewMax);
+    FOverview.SetData(FOverviewMin, FOverviewMax, 0,
+      FSession.TotalFrames - 1);
+    OverviewChannelColors := False;
+  end;
+end;
+
+procedure TMainForm.lbPeakListClick(Sender: TObject);
+var
+  PeakIndex: Integer;
+  S: string;
+begin
+  if lbPeakList.ItemIndex < 0 then
+    Exit;
+  S := lbPeakList.Items[lbPeakList.ItemIndex];
+  { Обработка навигационных элементов }
+  if S.StartsWith('<<') then
+  begin
+    { Листаем назад: предыдущее окно, крайний правый реальный элемент }
+    PeakIndex := Max(0, FPeakListFirstIndex - 1);
+    ShowPeak(PeakIndex);
+    Exit;
+  end;
+  if S.StartsWith('>>') then
+  begin
+    { Листаем вперёд: следующее окно, крайний левый реальный элемент }
+    PeakIndex := Min(FSession.PeakCount - 1, FPeakListFirstIndex +
+      FPeakListRealCount);
+    ShowPeak(PeakIndex);
+    Exit;
+  end;
+  { Обычный пик }
+  PeakIndex := FPeakListFirstIndex + lbPeakList.ItemIndex;
+  if FPeakListFirstIndex > 0 then
+    Dec(PeakIndex); // компенсация элемента "<<"
+  if (PeakIndex >= 0) and (PeakIndex < FSession.PeakCount) then
+  begin
+    FCurrentPeak := PeakIndex;
+    ShowPeak(PeakIndex);
+  end;
 end;
 
 end.

@@ -79,6 +79,11 @@ type
 
 function DefaultEodDetectorConfig: TEodDetectorConfig;
 function FishTypeToString(AType: TFishType): string;
+{ Строит общую (одноцветную) огибающую обзора из поканальных.
+  ASymmetric = True: ±max(|min|, |max|) по всем каналам (амплитудный вид);
+  False: настоящие min/max по всем каналам. Бины без данных остаются нулевыми. }
+procedure BuildGeneralEnvelope(const AChMin, AChMax: TChannelEnvelopes;
+  ASymmetric: Boolean; out AMin, AMax: TFloatArray);
 
 implementation
 
@@ -102,6 +107,48 @@ begin
     ftStim: Result := 'Stim';
   else
     Result := 'Unknown';
+  end;
+end;
+
+procedure BuildGeneralEnvelope(const AChMin, AChMax: TChannelEnvelopes;
+  ASymmetric: Boolean; out AMin, AMax: TFloatArray);
+var
+  N, I, Ch: Integer;
+  VMin, VMax, V: Single;
+begin
+  { Длина результата — минимальная длина среди всех поканальных массивов. }
+  N := Length(AChMin[0]);
+  for Ch := 0 to 3 do
+  begin
+    if Length(AChMin[Ch]) < N then N := Length(AChMin[Ch]);
+    if Length(AChMax[Ch]) < N then N := Length(AChMax[Ch]);
+  end;
+
+  SetLength(AMin, N);
+  SetLength(AMax, N);
+
+  for I := 0 to N - 1 do
+  begin
+    VMin := AChMin[0][I];
+    VMax := AChMax[0][I];
+    for Ch := 1 to 3 do
+    begin
+      if AChMin[Ch][I] < VMin then VMin := AChMin[Ch][I];
+      if AChMax[Ch][I] > VMax then VMax := AChMax[Ch][I];
+    end;
+
+    if ASymmetric then
+    begin
+      V := Abs(VMin);
+      if Abs(VMax) > V then V := Abs(VMax);
+      AMin[I] := -V;
+      AMax[I] := V;
+    end
+    else
+    begin
+      AMin[I] := VMin;
+      AMax[I] := VMax;
+    end;
   end;
 end;
 

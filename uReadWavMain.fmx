@@ -3,7 +3,7 @@ object MainForm: TMainForm
   Top = 0
   Caption = 'EOD Viewer'
   ClientHeight = 502
-  ClientWidth = 848
+  ClientWidth = 708
   FormFactor.Width = 320
   FormFactor.Height = 480
   FormFactor.Devices = [Desktop]
@@ -13,11 +13,12 @@ object MainForm: TMainForm
   DesignerMasterStyle = 0
   object Layout1: TLayout
     Align = Top
-    Size.Width = 848.000000000000000000
+    Position.X = 65.000000000000000000
+    Size.Width = 643.000000000000000000
     Size.Height = 34.000000000000000000
     Size.PlatformDefault = False
     TabOrder = 0
-    object FOpenWavButton: TButton
+    object FPrevButton: TButton
       Align = Left
       Margins.Left = 4.000000000000000000
       Margins.Top = 4.000000000000000000
@@ -27,67 +28,7 @@ object MainForm: TMainForm
       Size.Width = 60.000000000000000000
       Size.Height = 26.000000000000000000
       Size.PlatformDefault = False
-      TabOrder = 0
-      Text = 'OpenWav'
-      TextSettings.Trimming = None
-      OnClick = FOpenWavButtonClick
-    end
-    object FOpenPeakButton: TButton
-      Align = Left
-      Margins.Left = 4.000000000000000000
-      Margins.Top = 4.000000000000000000
-      Margins.Bottom = 4.000000000000000000
-      Position.X = 68.000000000000000000
-      Position.Y = 4.000000000000000000
-      Size.Width = 60.000000000000000000
-      Size.Height = 26.000000000000000000
-      Size.PlatformDefault = False
-      TabOrder = 5
-      Text = 'OpenPeak'
-      TextSettings.Trimming = None
-      OnClick = FOpenPeakButtonClick
-    end
-    object FAnalyzeButton: TButton
-      Align = Left
-      Margins.Left = 4.000000000000000000
-      Margins.Top = 4.000000000000000000
-      Margins.Bottom = 4.000000000000000000
-      Position.X = 132.000000000000000000
-      Position.Y = 4.000000000000000000
-      Size.Width = 60.000000000000000000
-      Size.Height = 26.000000000000000000
-      Size.PlatformDefault = False
-      TabOrder = 4
-      Text = 'Analyze'
-      TextSettings.Trimming = None
-      OnClick = FAnalyzeButtonClick
-    end
-    object FSaveButton: TButton
-      Align = Left
-      Margins.Left = 4.000000000000000000
-      Margins.Top = 4.000000000000000000
-      Margins.Bottom = 4.000000000000000000
-      Position.X = 196.000000000000000000
-      Position.Y = 4.000000000000000000
-      Size.Width = 60.000000000000000000
-      Size.Height = 26.000000000000000000
-      Size.PlatformDefault = False
-      TabOrder = 3
-      Text = 'Save'
-      TextSettings.Trimming = None
-      OnClick = FSaveButtonClick
-    end
-    object FPrevButton: TButton
-      Align = Left
-      Margins.Left = 4.000000000000000000
-      Margins.Top = 4.000000000000000000
-      Margins.Bottom = 4.000000000000000000
-      Position.X = 260.000000000000000000
-      Position.Y = 4.000000000000000000
-      Size.Width = 60.000000000000000000
-      Size.Height = 26.000000000000000000
-      Size.PlatformDefault = False
-      TabOrder = 2
+      TabOrder = 1
       Text = 'Prev'
       TextSettings.Trimming = None
       OnClick = FPrevButtonClick
@@ -97,57 +38,27 @@ object MainForm: TMainForm
       Margins.Left = 4.000000000000000000
       Margins.Top = 4.000000000000000000
       Margins.Bottom = 4.000000000000000000
-      Position.X = 324.000000000000000000
+      Position.X = 68.000000000000000000
       Position.Y = 4.000000000000000000
       Size.Width = 60.000000000000000000
       Size.Height = 26.000000000000000000
       Size.PlatformDefault = False
-      TabOrder = 1
+      TabOrder = 0
       Text = 'Next'
       TextSettings.Trimming = None
       OnClick = FNextButtonClick
-    end
-    object FOpenFolderButton: TButton
-      Align = Left
-      Margins.Left = 4.000000000000000000
-      Margins.Top = 4.000000000000000000
-      Margins.Bottom = 4.000000000000000000
-      Position.X = 388.000000000000000000
-      Position.Y = 4.000000000000000000
-      Size.Width = 72.000000000000000000
-      Size.Height = 26.000000000000000000
-      Size.PlatformDefault = False
-      TabOrder = 6
-      Text = 'Open Folder'
-      TextSettings.Trimming = None
-      OnClick = FOpenFolderButtonClick
-    end
-    object FSettingsButton: TButton
-      Align = Left
-      Margins.Left = 4.000000000000000000
-      Margins.Top = 4.000000000000000000
-      Margins.Bottom = 4.000000000000000000
-      Position.X = 464.000000000000000000
-      Position.Y = 4.000000000000000000
-      Size.Width = 60.000000000000000000
-      Size.Height = 26.000000000000000000
-      Size.PlatformDefault = False
-      TabOrder = 7
-      Text = 'Settings'
-      TextSettings.Trimming = None
-      OnClick = FSettingsButtonClick
     end
     object FPlayButton: TButton
       Align = Left
       Margins.Left = 4.000000000000000000
       Margins.Top = 4.000000000000000000
       Margins.Bottom = 4.000000000000000000
-      Position.X = 528.000000000000000000
+      Position.X = 132.000000000000000000
       Position.Y = 4.000000000000000000
       Size.Width = 60.000000000000000000
       Size.Height = 26.000000000000000000
       Size.PlatformDefault = False
-      TabOrder = 8
+      TabOrder = 2
       Text = 'Play'
       TextSettings.Trimming = None
       OnClick = FPlayButtonClick
@@ -157,65 +68,72 @@ object MainForm: TMainForm
       Margins.Left = 4.000000000000000000
       Margins.Top = 4.000000000000000000
       Margins.Bottom = 4.000000000000000000
-      Position.X = 592.000000000000000000
+      Position.X = 196.000000000000000000
       Position.Y = 4.000000000000000000
       Size.Width = 80.000000000000000000
       Size.Height = 26.000000000000000000
       Size.PlatformDefault = False
-      TabOrder = 9
+      TabOrder = 3
     end
-    object btGeometry: TButton
+    object cbBucketModeBox: TComboBox
       Align = Left
+      Items.Strings = (
+        #1054#1073#1079#1086#1088': '#1094#1074#1077#1090#1072' '#1082#1072#1085#1072#1083#1086#1074
+        #1054#1073#1079#1086#1088': '#1089#1077#1088#1099#1081' '#177'max|x|'
+        #1054#1073#1079#1086#1088': '#1089#1077#1088#1099#1081' min/max')
+      ItemIndex = 0
       Margins.Left = 4.000000000000000000
       Margins.Top = 4.000000000000000000
       Margins.Bottom = 4.000000000000000000
-      Position.X = 676.000000000000000000
+      Position.X = 413.000000000000000000
       Position.Y = 4.000000000000000000
-      Size.Width = 60.000000000000000000
+      Size.Width = 148.000000000000000000
       Size.Height = 26.000000000000000000
       Size.PlatformDefault = False
-      TabOrder = 10
-      Text = 'Geometry'
-      TextSettings.Trimming = None
-      OnClick = btGeometryClick
+      TabOrder = 4
+      OnChange = cbBucketModeBoxChange
     end
-    object btVideoExport: TButton
+    object cbOverviewLookBox: TComboBox
       Align = Left
+      Items.Strings = (
+        #1041#1072#1082#1077#1090#1099': '#1076#1080#1072#1087#1072#1079#1086#1085
+        #1041#1072#1082#1077#1090#1099': '#1094#1077#1085#1090#1088)
+      ItemIndex = 0
       Margins.Left = 4.000000000000000000
       Margins.Top = 4.000000000000000000
       Margins.Bottom = 4.000000000000000000
-      Position.X = 740.000000000000000000
+      Position.X = 280.000000000000000000
       Position.Y = 4.000000000000000000
-      Size.Width = 80.000000000000000000
+      Size.Width = 129.000000000000000000
       Size.Height = 26.000000000000000000
       Size.PlatformDefault = False
-      TabOrder = 11
-      Text = 'VideoExport'
-      TextSettings.Trimming = None
-      OnClick = btVideoExportClick
+      TabOrder = 5
+      OnChange = cbOverviewLookBoxChange
     end
   end
-  object FPeakList: TListBox
-    Align = Left
+  object lbPeakList: TListBox
+    Align = Right
+    Position.X = 572.000000000000000000
     Position.Y = 34.000000000000000000
-    Size.Width = 200.000000000000000000
+    Size.Width = 136.000000000000000000
     Size.Height = 452.000000000000000000
     Size.PlatformDefault = False
     TabOrder = 1
-    OnMouseDown = FPeakListMouseDown
+    OnClick = lbPeakListClick
+    OnMouseDown = lbPeakListMouseDown
     DisableFocusEffect = True
     ItemHeight = 15.000000000000000000
     DefaultItemStyles.ItemStyle = ''
     DefaultItemStyles.GroupHeaderStyle = ''
     DefaultItemStyles.GroupFooterStyle = ''
-    OnChange = FPeakListClick
-    Viewport.Width = 196.000000000000000000
+    Viewport.Width = 132.000000000000000000
     Viewport.Height = 448.000000000000000000
   end
   object FStatus: TLabel
     Align = Bottom
+    Position.X = 65.000000000000000000
     Position.Y = 486.000000000000000000
-    Size.Width = 848.000000000000000000
+    Size.Width = 643.000000000000000000
     Size.Height = 16.000000000000000000
     Size.PlatformDefault = False
     Text = 'FStatus'
@@ -223,19 +141,19 @@ object MainForm: TMainForm
   end
   object LayIMG: TLayout
     Align = Client
-    Size.Width = 648.000000000000000000
+    Size.Width = 507.000000000000000000
     Size.Height = 452.000000000000000000
     Size.PlatformDefault = False
     TabOrder = 3
     object PaintBox: TPaintBox
       Align = Client
-      Size.Width = 648.000000000000000000
+      Size.Width = 507.000000000000000000
       Size.Height = 350.000000000000000000
       Size.PlatformDefault = False
     end
     object LayNavi: TLayout
       Align = Top
-      Size.Width = 648.000000000000000000
+      Size.Width = 507.000000000000000000
       Size.Height = 33.000000000000000000
       Size.PlatformDefault = False
       TabOrder = 5
@@ -251,9 +169,9 @@ object MainForm: TMainForm
         Margins.Left = 4.000000000000000000
         Margins.Top = 4.000000000000000000
         Margins.Bottom = 4.000000000000000000
-        Position.X = 413.000000000000000000
+        Position.X = 397.000000000000000000
         Position.Y = 4.000000000000000000
-        Size.Width = 160.000000000000000000
+        Size.Width = 106.000000000000000000
         Size.Height = 25.000000000000000000
         Size.PlatformDefault = False
         TabOrder = 7
@@ -293,7 +211,7 @@ object MainForm: TMainForm
         Margins.Bottom = 4.000000000000000000
         Position.X = 329.000000000000000000
         Position.Y = 4.000000000000000000
-        Size.Width = 80.000000000000000000
+        Size.Width = 64.000000000000000000
         Size.Height = 25.000000000000000000
         Size.PlatformDefault = False
         TabOrder = 2
@@ -320,7 +238,7 @@ object MainForm: TMainForm
       CanParentFocus = True
       Orientation = Horizontal
       Position.Y = 433.000000000000000000
-      Size.Width = 648.000000000000000000
+      Size.Width = 507.000000000000000000
       Size.Height = 19.000000000000000000
       Size.PlatformDefault = False
       TabOrder = 1
@@ -329,7 +247,7 @@ object MainForm: TMainForm
     object OverviewPaintBox: TPaintBox
       Align = Bottom
       Position.Y = 383.000000000000000000
-      Size.Width = 648.000000000000000000
+      Size.Width = 507.000000000000000000
       Size.Height = 50.000000000000000000
       Size.PlatformDefault = False
     end
@@ -337,5 +255,136 @@ object MainForm: TMainForm
   object MainMenu1: TMainMenu
     Left = 320
     Top = 304
+  end
+  object layLeft: TLayout
+    Align = MostLeft
+    Size.Width = 65.000000000000000000
+    Size.Height = 502.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 5
+    object FOpenWavButton: TButton
+      Align = Top
+      Margins.Left = 4.000000000000000000
+      Margins.Top = 4.000000000000000000
+      Margins.Bottom = 4.000000000000000000
+      Position.X = 4.000000000000000000
+      Position.Y = 4.000000000000000000
+      Size.Width = 61.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 0
+      Text = 'OpenWav'
+      TextSettings.Trimming = None
+      OnClick = FOpenWavButtonClick
+    end
+    object FOpenPeakButton: TButton
+      Align = Top
+      Margins.Left = 4.000000000000000000
+      Margins.Top = 4.000000000000000000
+      Margins.Bottom = 4.000000000000000000
+      Position.X = 4.000000000000000000
+      Position.Y = 38.000000000000000000
+      Size.Width = 61.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 5
+      Text = 'OpenPeak'
+      TextSettings.Trimming = None
+      OnClick = FOpenPeakButtonClick
+    end
+    object FAnalyzeButton: TButton
+      Align = Top
+      Margins.Left = 4.000000000000000000
+      Margins.Top = 4.000000000000000000
+      Margins.Bottom = 4.000000000000000000
+      Position.X = 4.000000000000000000
+      Position.Y = 72.000000000000000000
+      Size.Width = 61.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 4
+      Text = 'Analyze'
+      TextSettings.Trimming = None
+      OnClick = FAnalyzeButtonClick
+    end
+    object FSaveButton: TButton
+      Align = Top
+      Margins.Left = 4.000000000000000000
+      Margins.Top = 4.000000000000000000
+      Margins.Bottom = 4.000000000000000000
+      Position.X = 4.000000000000000000
+      Position.Y = 106.000000000000000000
+      Size.Width = 61.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 3
+      Text = 'Save'
+      TextSettings.Trimming = None
+      OnClick = FSaveButtonClick
+    end
+    object btGeometry: TButton
+      Align = Top
+      Margins.Left = 4.000000000000000000
+      Margins.Top = 4.000000000000000000
+      Margins.Bottom = 4.000000000000000000
+      Position.X = 4.000000000000000000
+      Position.Y = 208.000000000000000000
+      Size.Width = 61.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 10
+      Text = 'Geometry'
+      TextSettings.Trimming = None
+      OnClick = btGeometryClick
+    end
+    object btVideoExport: TButton
+      Align = Top
+      StyledSettings = [Family, Style, FontColor]
+      Margins.Left = 4.000000000000000000
+      Margins.Top = 4.000000000000000000
+      Margins.Bottom = 4.000000000000000000
+      Position.X = 4.000000000000000000
+      Position.Y = 242.000000000000000000
+      Size.Width = 61.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 11
+      Text = 'VideoExport'
+      TextSettings.Font.Size = 10.000000000000000000
+      TextSettings.Trimming = None
+      OnClick = btVideoExportClick
+    end
+    object FOpenFolderButton: TButton
+      Align = Top
+      StyledSettings = [Family, Style, FontColor]
+      Margins.Left = 4.000000000000000000
+      Margins.Top = 4.000000000000000000
+      Margins.Bottom = 4.000000000000000000
+      Position.X = 4.000000000000000000
+      Position.Y = 140.000000000000000000
+      Size.Width = 61.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 6
+      Text = 'Open Folder'
+      TextSettings.Font.Size = 10.000000000000000000
+      TextSettings.Trimming = None
+      OnClick = FOpenFolderButtonClick
+    end
+    object FSettingsButton: TButton
+      Align = Top
+      Margins.Left = 4.000000000000000000
+      Margins.Top = 4.000000000000000000
+      Margins.Bottom = 4.000000000000000000
+      Position.X = 4.000000000000000000
+      Position.Y = 174.000000000000000000
+      Size.Width = 61.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 7
+      Text = 'Settings'
+      TextSettings.Trimming = None
+      OnClick = FSettingsButtonClick
+    end
   end
 end

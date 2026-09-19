@@ -28,6 +28,7 @@ type
     FProcessed: Int64;
     FOnProgress: TPeakOverviewProgressEvent;
     FOnFinished: TPeakOverviewFinishedEvent;
+    FSpreadBuckets: Boolean;
   protected
     procedure RunTask; override;
     procedure DoProgress; override;
@@ -36,6 +37,10 @@ type
     constructor Create(const AFileName: string; APoints: Integer = 2000);
     property OnProgress: TPeakOverviewProgressEvent read FOnProgress write FOnProgress;
     property OnFinished: TPeakOverviewFinishedEvent read FOnFinished write FOnFinished;
+        { True — бакет кэша заполняет все бины своего диапазона кадров;
+      False — только бин по центру диапазона. Временный переключатель
+      для визуального сравнения. }
+    property SpreadBuckets: Boolean read FSpreadBuckets write FSpreadBuckets;
   end;
 
 implementation
@@ -51,6 +56,7 @@ begin
   FPoints := APoints;
   if FPoints < 1 then
     FPoints := 1;
+  FSpreadBuckets := True;
 end;
 
 procedure TEodPeakOverviewThread.DoProgress;
@@ -74,11 +80,37 @@ var
   TotalFrames: Int64;
   PeakCount: Int64;
   Envelope: TWaveEnvelope;
-  N, I, Ch: Integer;
-  VMin, VMax: Single;
-  ChMin, ChMax: array[0..3] of Single;
-  SourceIndex: Integer;
-  BinStart, BinEnd, BinCount: Integer;
+  BinCount, I, Ch, B, B0, B1: Integer;
+  Touched: array of Boolean;
+  BktMin, BktMax: array[0..3] of Single;
+
+  { Кадр -> номер бина. Бины равномерны по времени записи (как в
+    Threads.Overview), иначе обзор не совпадёт с красным прямоугольником
+    текущего вида. Отрицательные/выходящие за конец кадры (окно пика у
+    границы при PadWithZero) прижимаются к краям. }
+  function FrameToBin(AFrame: Int64): Integer;
+  begin
+    Result := EnsureRange(
+      Integer((AFrame * BinCount) div TotalFrames), 0, BinCount - 1);
+  end;
+
+  { Добавляет min/max текущего бакета в бин; первый вклад в бин
+    просто задаёт значения (нулевая инициализация не должна
+    подмешиваться в min/max). }
+  procedure AddToBin(ABin: Integer);
+  var
+    C: Integer;
+  begin
+    for C := 0 to 3 do
+    begin
+      if (not Touched[ABin]) or (BktMin[C] < FChannelMin[C][ABin]) then
+        FChannelMin[C][ABin] := BktMin[C];
+      if (not Touched[ABin]) or (BktMax[C] > FChannelMax[C][ABin]) then
+        FChannelMax[C][ABin] := BktMax[C];
+    end;
+    Touched[ABin] := True;
+  end;
+
 begin
   FProcessed := 0;
   FTotalFrames := 0;
@@ -110,74 +142,66 @@ begin
 
     CheckCancel;
 
-    N := Length(Envelope);
-    if N <= 0 then
+    if Length(Envelope) <= 0 then
       raise Exception.Create('Огибающая пуста');
 
-    BinCount := N;
-    if BinCount > FPoints then
-      BinCount := FPoints;
+    BinCount := FPoints;
+    if TotalFrames < BinCount then
+      BinCount := Integer(TotalFrames);
+    if BinCount < 1 then
+      BinCount := 1;
 
-    SetLength(FOverviewMin, BinCount);
-    SetLength(FOverviewMax, BinCount);
     for Ch := 0 to 3 do
     begin
       SetLength(FChannelMin[Ch], BinCount);
       SetLength(FChannelMax[Ch], BinCount);
+      for I := 0 to BinCount - 1 do
+      begin
+        FChannelMin[Ch][I] := 0;
+        FChannelMax[Ch][I] := 0;
+      end;
     end;
 
+    SetLength(Touched, BinCount);
     for I := 0 to BinCount - 1 do
+      Touched[I] := False;
+
+    for I := 0 to High(Envelope) do
     begin
-      BinStart := (I * N) div BinCount;
-      BinEnd := ((I + 1) * N) div BinCount - 1;
-      if BinEnd < BinStart then
-        BinEnd := BinStart;
+      CheckCancel;
 
-      VMin := MaxSingle;
-      VMax := -MaxSingle;
-      for Ch := 0 to 3 do
+      { Пустой бакет (см. InitBucket в IO.PeakStore) — пропускаем. }
+      if Envelope[I].EndPosition < Envelope[I].StartPosition then
+        Continue;
+
+      BktMin[0] := Envelope[I].Ch1Min;  BktMax[0] := Envelope[I].Ch1Max;
+      BktMin[1] := Envelope[I].Ch2Min;  BktMax[1] := Envelope[I].Ch2Max;
+      BktMin[2] := Envelope[I].Ch3Min;  BktMax[2] := Envelope[I].Ch3Max;
+      BktMin[3] := Envelope[I].Ch4Min;  BktMax[3] := Envelope[I].Ch4Max;
+
+      if FSpreadBuckets then
       begin
-        ChMin[Ch] := MaxSingle;
-        ChMax[Ch] := -MaxSingle;
+        B0 := FrameToBin(Envelope[I].StartPosition);
+        B1 := FrameToBin(Envelope[I].EndPosition);
+      end
+      else
+      begin
+        B0 := FrameToBin(Envelope[I].StartPosition +
+          (Envelope[I].EndPosition - Envelope[I].StartPosition) div 2);
+        B1 := B0;
       end;
 
-      for SourceIndex := BinStart to BinEnd do
-      begin
-        CheckCancel;
-
-        VMin := Min(VMin, Envelope[SourceIndex].Ch1Min);
-        VMin := Min(VMin, Envelope[SourceIndex].Ch2Min);
-        VMin := Min(VMin, Envelope[SourceIndex].Ch3Min);
-        VMin := Min(VMin, Envelope[SourceIndex].Ch4Min);
-
-        VMax := Max(VMax, Envelope[SourceIndex].Ch1Max);
-        VMax := Max(VMax, Envelope[SourceIndex].Ch2Max);
-        VMax := Max(VMax, Envelope[SourceIndex].Ch3Max);
-        VMax := Max(VMax, Envelope[SourceIndex].Ch4Max);
-
-        ChMin[0] := Min(ChMin[0], Envelope[SourceIndex].Ch1Min);
-        ChMax[0] := Max(ChMax[0], Envelope[SourceIndex].Ch1Max);
-        ChMin[1] := Min(ChMin[1], Envelope[SourceIndex].Ch2Min);
-        ChMax[1] := Max(ChMax[1], Envelope[SourceIndex].Ch2Max);
-        ChMin[2] := Min(ChMin[2], Envelope[SourceIndex].Ch3Min);
-        ChMax[2] := Max(ChMax[2], Envelope[SourceIndex].Ch3Max);
-        ChMin[3] := Min(ChMin[3], Envelope[SourceIndex].Ch4Min);
-        ChMax[3] := Max(ChMax[3], Envelope[SourceIndex].Ch4Max);
-      end;
-
-      FOverviewMin[I] := VMin;
-      FOverviewMax[I] := VMax;
-      for Ch := 0 to 3 do
-      begin
-        FChannelMin[Ch][I] := ChMin[Ch];
-        FChannelMax[Ch][I] := ChMax[Ch];
-      end;
+      for B := B0 to B1 do
+        AddToBin(B);
     end;
+
+    BuildGeneralEnvelope(FChannelMin, FChannelMax, True,
+      FOverviewMin, FOverviewMax);
 
     FProcessed := TotalFrames;
     TThread.Synchronize(Self, DoProgress);
   finally
-    { Файл закрываем до DoFinished (который вызывает база): форма может
+    { Файл закрываем до DoFinished (его вызывает база): форма может
       сразу переоткрыть этот же .eodpk. }
     Store.Free;
   end;
