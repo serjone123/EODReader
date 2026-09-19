@@ -73,7 +73,6 @@ end;
 procedure TEodBackgroundThread.CheckCancel;
 begin
   if CancelRequested then
-//    raise EAbort.Create('');
     Abort
 end;
 

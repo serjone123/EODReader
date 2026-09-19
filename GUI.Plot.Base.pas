@@ -97,8 +97,6 @@ begin
   FPaintBox.OnPaint := PaintBoxPaint;
   FPaintBox.HitTest := True;
 
-  FPopupMenu := TPopupMenu.Create(APaintBox);
-  FPopupMenu.Parent := APaintBox;
 end;
 
 destructor TPlotBase.Destroy;
@@ -146,6 +144,14 @@ procedure TPlotBase.BuildContextMenu;
 var
   I: Integer;
 begin
+  { Меню создаём лениво, при первом правом клике: рендер видео создаёт
+    график в фоновом потоке, а создавать FMX-контролы вне главного
+    потока небезопасно. }
+  if FPopupMenu = nil then
+  begin
+    FPopupMenu := TPopupMenu.Create(FPaintBox);
+    FPopupMenu.Parent := FPaintBox;
+  end;
   for I := FPopupMenu.ItemsCount - 1 downto 0 do
     FPopupMenu.Items[I].Free;
 

@@ -30,8 +30,8 @@
   с переходами `<<` / `>>`), кнопки Prev/Next.
 - Обзорный график может рисоваться в цветах каналов (Ch1…Ch4) — включается
   свойством `ChannelColors` у контроллера обзора (`GUI.OverviewController`,
-  класс `TEodOverviewController`); поканальные огибающие строятся
-  в `BuildOverview` (для `.eodpk` — из кэша файла), поэтому переключение режима
+  класс `TEodOverviewController`); поканальные огибающие строятся воркерами обзора
+  (Threads.Overview для WAV, Threads.PeakOverview для .eodpk — из кэша файла), поэтому переключение режима
   не перечитывает запись. Каждый канал масштабируется по своему максимуму.
 - **Воспроизведение записи** (кнопка `Play`): плеер ведёт «виртуальное время»
   записи и показывает картинку очередного пика в тот момент, когда наступает его
@@ -153,15 +153,17 @@ Cache level 0 … N
 
 Известные безвредные предупреждения компилятора (не ошибки, можно игнорировать):
 `H2164 PeakPositions` (ShowPeak), `W1000 MessageDlg deprecated`,
-`H2077 BestDistance` (FillPeakListAroundFrame), `H2219 ShowCurrentRange`.
+`H2077 BestDistance` (TEodPeakList.FillAroundFrame).
 
 ## Структура проекта
 
 | Юнит | Назначение |
 |---|---|
 | `ReadEOD.dpr` | Точка входа, список всех юнитов. |
-| `uReadWavMain.pas` + `.fmx` | Главная форма `TMainForm`: вся логика UI, навигация, воспроизведение. |
+| `uReadWavMain.pas` + `.fmx` | Главная форма TMainForm: сборка UI, навигация, показ пиков/диапазонов; воспроизведение и список пиков вынесены в GUI.Playback/GUI.PeakList |
 | `GUI.Model.pas` | `TEodGuiSession` — сессия поверх WAV-пары (`dmWav`) или `.eodpk` (`dmPeakFile`); единый API чтения сегментов/пиков для GUI. |
+| `GUI.Playback.pas` | TEodPlayer, воспроизведение как последовательность пиков |
+| `GUI.PeakList.pas` | TEodPeakList, страницы списка пиков и ссылки <</>> |
 | `GUI.Plot.Base.pas` | Общий предок `TPlotBase` для обоих графиков: владение `TPaintBox`, контекстное меню (Copy/Save), `RenderToBitmap`. Общие события и `EodChannelColors`. |
 | `GUI.Plot.Signal.pas` | `TSignalPlot` (основной график, режимы, зум/пан). |
 | `GUI.Plot.Overview.pas` | `TOverviewPlot` (обзорный график). |

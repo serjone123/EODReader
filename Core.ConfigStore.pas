@@ -25,13 +25,7 @@ uses
   System.SysUtils, System.IOUtils, System.JSON;
 
 function GetDefaultConfigFileName: string;
-var
-  Dir: string;
 begin
-//  Dir := TPath.Combine(TPath.GetAppPath, 'EODReader');
-//  if not TDirectory.Exists(Dir) then
-//    TDirectory.CreateDirectory(Dir);
-//  Result := TPath.Combine(Dir, 'eodreader_config.json');
   Result := TPath.Combine(TPath.GetAppPath, 'config.json');
 end;
 

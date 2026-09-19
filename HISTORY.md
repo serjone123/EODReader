@@ -20,6 +20,26 @@
 
 ## Записи
 
+### 2026-09-19 — Ревью выноса кода из формы; исправления по итогам — Claude
+
+- `uReadWavMain.fmx`: перепутанные комбобоксы `cbBucketModeBox`/
+  `cbOverviewLookBox` (имена и обработчики не соответствовали пунктам) —
+  из-за этого «Бакеты: центр» включал серый вид обзора, а серые виды не
+  различались. Поменяны местами имена и `OnChange`.
+- `GUI.OverviewController`: `StartPeakOverview` больше не выходит без запуска,
+  если идёт WAV-обзор; `StartWavOverview` отменяет обзор EODPK;
+  `StartPeakOverviewThread` очищает график.
+- `GUI.Model.FindPeakRangeIndices`: использует `FStore.FindPeakRange` и работает
+  в режиме WAV (бинарный поиск по `FPeaks`); `ShowRawPosition` больше не
+  делает двух полных проходов по пикам на каждый шаг зума/панорамы.
+- `GUI.Plot.Base`: `TPopupMenu` создаётся лениво (рендер видео создаёт график
+  в фоновом потоке).
+- Удалён мёртвый код: `IO.PeakStore` (закомментированный `TWaveEnvelopePoint`),
+  `Core.ConfigStore`, `Threads.Base`, `GUI.Plot.Signal` (недостижимая ветка
+  огибающей в `pmRaw4Channels`, дублирующий `case`).
+- Математика и формат данных не менялись. Не собиралось (нет компилятора у
+  агента) — сборка и проверка за serjone.
+
 ### 2026-09-19 — Карта скоростей плейбека переехала с формы в GUI.Playback — opencode
 
 - `TMainForm.ApplyPlaybackSpeed` удалён: `TEodPlayer.SetSpeedIndex(AIndex)`

@@ -118,31 +118,6 @@ type
     SampleCount: Cardinal;
   end;
 
-  { One display bucket.
-
-    16 bytes of position information +
-    32 bytes of min/max for four channels =
-    48 bytes.
-  }
-//  TWaveEnvelopePoint = packed record
-//    StartPosition: Int64;
-//    EndPosition: Int64;
-//
-//    Ch1Min: Single;
-//    Ch1Max: Single;
-//
-//    Ch2Min: Single;
-//    Ch2Max: Single;
-//
-//    Ch3Min: Single;
-//    Ch3Max: Single;
-//
-//    Ch4Min: Single;
-//    Ch4Max: Single;
-//  end;
-
-  // TWaveEnvelope = array of TWaveEnvelopePoint;
-
   TEodPeakStore = class
   private
     FStream: TFileStream;

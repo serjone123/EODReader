@@ -238,15 +238,14 @@ begin
   if FClosing then
     Exit;
 
-  if GetOverviewRunning then
-  begin
-    if Assigned(FOverviewThread) then
-      FOverviewThread.Cancel;
-    Exit;
-  end;
-
   if AFileName = '' then
     Exit;
+
+  { Обзор WAV от предыдущей сессии больше не нужен: отменяем и запускаем
+    обзор EODPK. Предыдущий расчёт EODPK (смена режима бакетов) отменяет
+    сам StartPeakOverviewThread. }
+  if Assigned(FOverviewThread) then
+    FOverviewThread.Cancel;
 
   StartPeakOverviewThread(AFileName, ASpreadBuckets);
 end;
@@ -260,6 +259,10 @@ begin
   { Предыдущий обзор (если остался) отменяем — так же поступала форма. }
   if Assigned(FOverviewThread) then
     FOverviewThread.Cancel;
+
+  { Обзор EODPK от предыдущей сессии тоже больше не нужен. }
+  if Assigned(FPeakOverviewThread) then
+    FPeakOverviewThread.Cancel;
 
   FOverviewThread := TEodOverviewThread.Create(FSession.File1, FSession.File2);
   FOverviewThread.OnProgress := OverviewProgress;
@@ -281,6 +284,8 @@ begin
     FOverviewChMin[Ch] := nil;
     FOverviewChMax[Ch] := nil;
   end;
+
+  FOverview.Clear;
 
   Status('Building EODPK overview...');
 

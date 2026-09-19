@@ -692,26 +692,10 @@ const
   MaxEnvelopePoints = 4096;
 var
   StartFrame, EndFrame: Int64;
-  Count64: Int64;
-
   Envelope: TWaveEnvelope;
-
-  FirstIdx, LastIdx: Int64;
-  PeakCountInRange: Int64;
-
   Data: TAudioChunk;
   Std: TFloatArray;
   Fir: TFloatArray;
-
-  Peak: TPeak;
-  PeakStart: Int64;
-  Temp: TAudioChunk;
-
-  CopyStart, CopyEnd: Int64;
-  DestOffset, SourceOffset: Int64;
-  CopyCount: Int64;
-
-  I: Int64;
 begin
   if FSession.Mode <> dmPeakFile then
     Exit;
@@ -720,73 +704,31 @@ begin
     Exit;
 
   StartFrame := EnsureRange(AStartFrame, Int64(0), FSession.TotalFrames - 1);
-
   EndFrame := EnsureRange(AEndFrame, StartFrame, FSession.TotalFrames - 1);
 
-  Count64 := EndFrame - StartFrame + 1;
-
   { ------------------------------------------------------------ }
-  { Малый диапазон: сохраняем точный вид сигнала. }
+  { Малый диапазон с небольшим числом окон пиков: точный вид       }
+  { сигнала. Граница RawLimit — политика GUI, не формата.          }
   { ------------------------------------------------------------ }
 
-  if Count64 <= RawLimit then
+  if FSession.TryReadPeakFileRawRange(StartFrame, EndFrame,
+    RawLimit, RawLimit, Data) then
   begin
-    if FSession.FindPeakRangeIndices(StartFrame, EndFrame, 30, FirstIdx, LastIdx)
-    then
-    begin
-      PeakCountInRange := LastIdx - FirstIdx + 1;
-    end
-    else
-      PeakCountInRange := 0;
+    FPlot.SetChannels(Data, StartFrame, FSession.SampleRate, -1,
+      Format('Samples %d .. %d', [StartFrame, EndFrame]));
 
-    if PeakCountInRange <= RawLimit then
-    begin
-      SetLength(Data, Integer(Count64));
+    Std := FSession.CalculateStd(Data);
+    Fir := FDetector.ApplyFir15(Std);
 
-      if Length(Data) > 0 then
-        FillChar(Data[0], NativeInt(Length(Data)) * SizeOf(TAudioFrame), 0);
+    FPlot.SetStd(Std, StartFrame, FSession.SampleRate, -1, 'STD');
+    FPlot.SetFir(Fir, StartFrame, FSession.SampleRate, -1, 'FIR15');
 
-      if PeakCountInRange > 0 then
-      begin
-        for I := FirstIdx to LastIdx do
-        begin
-          Temp := FSession.ReadPeak(Integer(I), Peak, PeakStart);
+    FPlot.SetSelectedPosition(StartFrame);
+    FPlot.SetViewRange(StartFrame, EndFrame);
+    FPlot.SetHistogramRange(StartFrame, EndFrame);
 
-          CopyStart := Max(StartFrame, PeakStart);
-
-          CopyEnd := Min(EndFrame, PeakStart + Length(Temp) - 1);
-
-          if CopyEnd < CopyStart then
-            Continue;
-
-          DestOffset := CopyStart - StartFrame;
-
-          SourceOffset := CopyStart - PeakStart;
-
-          CopyCount := CopyEnd - CopyStart + 1;
-
-          Move(Temp[Integer(SourceOffset)], Data[Integer(DestOffset)],
-            NativeInt(CopyCount) * SizeOf(TAudioFrame));
-        end;
-      end;
-
-      FPlot.SetChannels(Data, StartFrame, FSession.SampleRate, -1,
-        Format('Samples %d .. %d', [StartFrame, EndFrame]));
-
-      Std := FSession.CalculateStd(Data);
-      Fir := FDetector.ApplyFir15(Std);
-
-      FPlot.SetStd(Std, StartFrame, FSession.SampleRate, -1, 'STD');
-
-      FPlot.SetFir(Fir, StartFrame, FSession.SampleRate, -1, 'FIR15');
-
-      FPlot.SetSelectedPosition(StartFrame);
-      FPlot.SetViewRange(StartFrame, EndFrame);
-      FPlot.SetHistogramRange(StartFrame, EndFrame);
-
-      UpdatePlotMode;
-      Exit;
-    end;
+    UpdatePlotMode;
+    Exit;
   end;
 
   { ------------------------------------------------------------ }
@@ -809,14 +751,13 @@ begin
 
   { STD/FIR здесь бессмысленны без восстановления сырого сигнала. }
   FPlot.SetStd(nil, StartFrame, FSession.SampleRate, -1, 'STD');
-
   FPlot.SetFir(nil, StartFrame, FSession.SampleRate, -1, 'FIR15');
 
   UpdatePlotMode;
 
-  UpdateStatus
-    (Format('EODPK envelope %d .. %d  (%d samples, %d display buckets)',
-    [StartFrame, EndFrame, Count64, Length(Envelope)]));
+  UpdateStatus(Format(
+    'EODPK envelope %d .. %d  (%d samples, %d display buckets)',
+    [StartFrame, EndFrame, EndFrame - StartFrame + 1, Length(Envelope)]));
 end;
 
 procedure TMainForm.ShowRawPosition(AStartFrame, AEndFrame: Int64);
@@ -826,8 +767,8 @@ var
   Std: TFloatArray;
   Fir: TFloatArray;
   PeakPositions: TArray<Int64>;
+  FirstIdx, LastIdx: Int64;
   I, N: Integer;
-  Peak: TPeak;
   CountText: string;
 begin
   if FSession.Mode <> dmWav then
@@ -854,21 +795,17 @@ begin
 
   FPlot.SetFir(Fir, StartFrame, FSession.SampleRate, -1, 'FIR15');
 
+  { Пики в диапазоне — бинарным поиском, а не двумя проходами по всем
+    пикам записи (метод вызывается на каждый шаг зума/панорамы). }
   N := 0;
-  for I := 0 to FSession.PeakCount - 1 do
-    if FSession.GetPeak(I, Peak) then
-      if (Peak.Position >= StartFrame) and (Peak.Position <= EndFrame) then
-        Inc(N);
-
-  SetLength(PeakPositions, N);
-  N := 0;
-  for I := 0 to FSession.PeakCount - 1 do
-    if FSession.GetPeak(I, Peak) then
-      if (Peak.Position >= StartFrame) and (Peak.Position <= EndFrame) then
-      begin
-        PeakPositions[N] := Peak.Position;
-        Inc(N);
-      end;
+  SetLength(PeakPositions, 0);
+  if FSession.FindPeakRangeIndices(StartFrame, EndFrame, 0, FirstIdx, LastIdx) then
+  begin
+    N := Integer(LastIdx - FirstIdx + 1);
+    SetLength(PeakPositions, N);
+    for I := 0 to N - 1 do
+      PeakPositions[I] := FSession.GetPeakPosition(Integer(FirstIdx) + I);
+  end;
 
   FPlot.SetPeakPositions(PeakPositions);
   FPlot.SetSelectedPosition(StartFrame);
@@ -1404,16 +1341,16 @@ end;
 
 procedure TMainForm.cbBucketModeBoxChange(Sender: TObject);
 begin
-  { Режим бакетов применяется при построении обзора EODPK, поэтому
-    строим заново (для EODPK это быстрое чтение кэша). }
-  if FSession.Mode = dmPeakFile then
-    FOverviewController.StartPeakOverview(FSession.PeakFile,
-      cbBucketModeBox.ItemIndex = 0);
+  FOverviewController.SetOverviewLook(cbOverviewLookBox.ItemIndex);
 end;
 
 procedure TMainForm.cbOverviewLookBoxChange(Sender: TObject);
 begin
-  FOverviewController.SetOverviewLook(cbOverviewLookBox.ItemIndex);
+{ Режим бакетов применяется при построении обзора EODPK, поэтому
+    строим заново (для EODPK это быстрое чтение кэша). }
+  if FSession.Mode = dmPeakFile then
+    FOverviewController.StartPeakOverview(FSession.PeakFile,
+      cbBucketModeBox.ItemIndex = 0);
 end;
 
 procedure TMainForm.lbPeakListClick(Sender: TObject);

@@ -1106,7 +1106,6 @@ begin
     X := R.Left + I * BinWidth;
     H := Bins[I] / MaxCount * R.Height;
     Y := R.Bottom - H;
-//    Canvas.FillRect(RectF(X + 1, Y, X + BinWidth - 1, R.Bottom), 0, 0, [], 1);
     if BinWidth < 2 then
       Canvas.FillRect(RectF(X, Y, X + BinWidth, R.Bottom), 0, 0, [], 1)
     else
@@ -1189,14 +1188,6 @@ begin
     PlotTitle, False, 1, [],
     TTextAlign.Leading, TTextAlign.Center);
 
-  case FMode of
-    pmRaw, pmRawAndFir15: N := Length(FData);
-    pmStd: N := Length(FStd);
-    pmFir15: N := Length(FFir);
-    pmRaw4Channels: N := Length(FData);
-    pmHistogram: N := 1;
-  end;
-
   if FMode = pmHistogram then
   begin
     DrawHistogram(Canvas, R);
@@ -1214,9 +1205,9 @@ begin
       TTextAlign.Leading, TTextAlign.Center);
     Exit;
   end;
-{ EODPK envelope is a RAW representation. The layout (single overlaid
-  graph vs. four separate graphs) must depend on the current mode ONLY,
-  never on the zoom level. }
+  { Огибающая EODPK — это RAW-представление. Раскладка (один общий график
+    или четыре отдельных) зависит ТОЛЬКО от текущего режима, но не от
+    масштаба. }
 if FEnvelopeActive and
    ((FMode = pmRaw) or (FMode = pmRaw4Channels)) then
 begin
@@ -1224,8 +1215,6 @@ begin
     DrawEnvelope4Channels(Canvas, R)
   else
     DrawEnvelopeSingle(Canvas, R);
-
-  { selected position / peak marker if needed }
 
   Exit;
 end;
@@ -1243,11 +1232,7 @@ end;
 
   if FMode = pmRaw4Channels then
   begin
-//    DrawRaw4Channels(Canvas, R);
-    if FEnvelopeActive then
-      DrawEnvelope4Channels(Canvas, R)
-    else
-      DrawRaw4Channels(Canvas, R);
+    DrawRaw4Channels(Canvas, R);
     if (FSelectedOffset >= 0) and (FSelectedOffset < N) then
     begin
       X := MapX(FSelectedOffset, N, R);

@@ -46,6 +46,12 @@ type
     property Version: Integer read GetVersion;
     function FindPeakRangeIndices(StartFrame, EndFrame: Int64; WindowMargin: Int64; out FirstIdx, LastIdx: Int64): Boolean;
     function ReadPeakEnvelope(StartFrame, EndFrame: Int64; MaxPoints: Integer; var Envelope: TWaveEnvelope): Boolean;
+    { Собирает сырой сигнал диапазона StartFrame..EndFrame из окон пиков
+      EODPK. Между окнами данных нет — там нули. Возвращает False (Data
+      пуст), если режим не dmPeakFile, диапазон длиннее MaxFrames или в него
+      попадает больше MaxPeaks окон: тогда вызывающий рисует огибающую. }
+    function TryReadPeakFileRawRange(StartFrame, EndFrame: Int64;
+      MaxFrames, MaxPeaks: Integer; out Data: TAudioChunk): Boolean;
     function ReadPeakInfoRange(FirstIndex: Int64; Count: Int64; var Peaks: TPeakArray): Boolean;
     property PeakPositions: TArray<Int64> read GetPeakPositions;
   end;
@@ -66,42 +72,64 @@ begin
   inherited;
 end;
 
-function TEodGuiSession.FindPeakRangeIndices(StartFrame, EndFrame, WindowMargin: Int64; out FirstIdx, LastIdx: Int64): Boolean;
+function TEodGuiSession.FindPeakRangeIndices(StartFrame, EndFrame: Int64;
+  WindowMargin: Int64; out FirstIdx, LastIdx: Int64): Boolean;
 var
-  L, R, M: Int64;
-  P: TPeak;
-  StartPos: Int64;
   SearchStart, SearchEnd: Int64;
+  L, R, M: Int64;
 begin
   Result := False;
   FirstIdx := -1;
   LastIdx := -1;
-  if FStore = nil then Exit;
-  if FStore.Header.PeakCount <= 0 then Exit;
-  SearchStart := Max(0, StartFrame - WindowMargin);
+
+  SearchStart := Max(Int64(0), StartFrame - WindowMargin);
   SearchEnd := EndFrame + WindowMargin;
 
-  L := 0;
-  R := FStore.Header.PeakCount - 1;
-  while L <= R do
-  begin
-    M := L + (R - L) div 2;
-    if not FStore.ReadRecordInfo(M, P, StartPos) then Exit;
-    if P.Position >= SearchStart then begin FirstIdx := M; R := M - 1 end
-    else L := M + 1;
-  end;
-  if FirstIdx < 0 then FirstIdx := FStore.Header.PeakCount;
+  case FMode of
+    dmPeakFile:
+      { Бинарный поиск по записям уже есть в хранилище — не дублируем. }
+      if FStore <> nil then
+        Result := FStore.FindPeakRange(SearchStart, SearchEnd, FirstIdx, LastIdx);
 
-  L := 0;
-  R := FStore.Header.PeakCount - 1;
-  while L <= R do
-  begin
-    M := L + (R - L) div 2;
-    if not FStore.ReadRecordInfo(M, P, StartPos) then Exit;
-    if P.Position <= SearchEnd then begin LastIdx := M; L := M + 1 end
-    else R := M - 1;
+    dmWav:
+      begin
+        if Length(FPeaks) = 0 then
+          Exit;
+
+        { Пики отсортированы по Position (линейный проход детектора).
+          Первый пик с Position >= SearchStart: }
+        L := 0;
+        R := High(FPeaks);
+        while L <= R do
+        begin
+          M := L + (R - L) div 2;
+          if FPeaks[Integer(M)].Position >= SearchStart then
+          begin
+            FirstIdx := M;
+            R := M - 1;
+          end
+          else
+            L := M + 1;
+        end;
+
+        { Последний пик с Position <= SearchEnd: }
+        L := 0;
+        R := High(FPeaks);
+        while L <= R do
+        begin
+          M := L + (R - L) div 2;
+          if FPeaks[Integer(M)].Position <= SearchEnd then
+          begin
+            LastIdx := M;
+            L := M + 1;
+          end
+          else
+            R := M - 1;
+        end;
+
+        Result := (FirstIdx >= 0) and (LastIdx >= FirstIdx);
+      end;
   end;
-  Result := (FirstIdx >= 0) and (FirstIdx <= LastIdx);
 end;
 
 procedure TEodGuiSession.Close;
@@ -289,6 +317,71 @@ begin
   if FMode <> dmPeakFile then Exit;
   if not FindPeakRangeIndices(StartFrame, EndFrame, 0, FirstIdx, LastIdx) then Exit;
   Result := FStore.ReadEnvelope(FirstIdx, LastIdx, MaxPoints, Envelope);
+end;
+
+function TEodGuiSession.TryReadPeakFileRawRange(StartFrame, EndFrame: Int64;
+  MaxFrames, MaxPeaks: Integer; out Data: TAudioChunk): Boolean;
+var
+  Count64: Int64;
+  FirstIdx, LastIdx, I: Int64;
+  Margin: Int64;
+  Peak: TPeak;
+  PeakStart: Int64;
+  Temp: TAudioChunk;
+  CopyStart, CopyEnd, CopyCount: Int64;
+  DestOffset, SourceOffset: Int64;
+begin
+  Result := False;
+  SetLength(Data, 0);
+
+  if (FMode <> dmPeakFile) or (FStore = nil) then
+    Exit;
+  if EndFrame < StartFrame then
+    Exit;
+
+  Count64 := EndFrame - StartFrame + 1;
+  if Count64 > MaxFrames then
+    Exit;
+
+  { Окно пика — [Position - WindowBefore .. Position + WindowAfter]. Берём
+    запас по большему из двух значений; лишние пики отсеет проверка
+    пересечения ниже. }
+  Margin := Max(FStore.Header.WindowBefore, FStore.Header.WindowAfter);
+
+  if FindPeakRangeIndices(StartFrame, EndFrame, Margin, FirstIdx, LastIdx) then
+  begin
+    if LastIdx - FirstIdx + 1 > MaxPeaks then
+      Exit;
+  end
+  else
+  begin
+    FirstIdx := 0;
+    LastIdx := -1;
+  end;
+
+  SetLength(Data, Integer(Count64));
+  FillChar(Data[0], NativeInt(Count64) * SizeOf(TAudioFrame), 0);
+
+  { Окна соседних пиков могут перекрываться — более поздний пик перезаписывает
+    общий участок (см. EODPK_FORMAT.md, раздел про перекрытие окон). }
+  for I := FirstIdx to LastIdx do
+  begin
+    Temp := ReadPeak(Integer(I), Peak, PeakStart);
+
+    CopyStart := Max(StartFrame, PeakStart);
+    CopyEnd := Min(EndFrame, PeakStart + Length(Temp) - 1);
+    if CopyEnd < CopyStart then
+      Continue;
+
+    DestOffset := CopyStart - StartFrame;
+    SourceOffset := CopyStart - PeakStart;
+    CopyCount := CopyEnd - CopyStart + 1;
+
+    Move(Temp[Integer(SourceOffset)], Data[Integer(DestOffset)],
+      NativeInt(CopyCount) * SizeOf(TAudioFrame));
+  end;
+
+  Result := True;
 end;
 
 end.
