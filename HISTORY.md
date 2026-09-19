@@ -20,6 +20,69 @@
 
 ## Записи
 
+### 2026-09-19 — Вынос оркестрации фоновых воркеров в GUI.Analysis.pas — opencode
+
+- Новый модуль `GUI.Analysis.pas` — класс `TEodAnalysisController`: владеет
+  четырьмя фоновыми воркерами главной формы (`Threads.Analysis`,
+  `Threads.WavOpen`, `Threads.Overview`, `Threads.PeakOverview`), запускает
+  их, отменяет и сбрасывает ссылку по завершении. Прогресс и результаты
+  отдаются наружу событиями (`OnAnalysis*`, `OnOpen*`, `OnOverview*`,
+  `OnPeakOverview*`); признак закрытия формы опрашивается через `Closing`, а
+  завершившийся при закрытии воркер дёргает `OnCloseRequest`. Класс не знает
+  ни о форме, ни о её контролах.
+- `uReadWavMain.pas`: удалены поля `FAnalysis/FOpenThread/FOverviewThread/
+  FPeakOverviewThread/FClosing`, методы `AnalysisThreadTerminated/
+  OpenThreadTerminated/OverviewThreadTerminated/PeakOverviewThreadTerminated`
+  и прямой код создания потоков. Добавлено поле `FBackground:
+  TEodAnalysisController`, создаётся в `FormCreate`, события привязываются к
+  существующим обработчикам формы. `FormDestroy`/`FormCloseQuery` работают
+  через `FBackground.CancelAll`/`AnyRunning`; `StartAnalysis`, `StartOverview`,
+  `StartPeakOverview` и обработчики кнопок вызывают методы контроллера. Из
+  `uses` убраны больше не нужные `Threads.*`.
+- Поведение сохранено: те же тексты статусов, порядок отмены, реакция на
+  прогресс/ошибку/отмену, «список пиков не обновляется во время плея» и
+  синхронизация списка при остановке. Реакция на данные (показ пиков, графики,
+  `SetAnalysisUiState`) осталась в форме.
+- Проверено: `cmd /c _build.cmd` — собирается (`2007 lines, 2.28 seconds,
+  6023844 bytes code`), только известные `W1000 MessageDlg`; новых `H2219`
+  нет. Поведение (закрытие формы с активным воркером, отмена анализа, обзор
+  WAV/EODPK) проверяет serjone.
+
+### 2026-09-19 — Вынос логики из uReadWavMain.pas в GUI.Playback и GUI.PeakList — opencode
+
+- Новые модули подсистемы `GUI` (имена согласованы с serjone):
+  - `GUI.Playback.pas` — класс `TEodPlayer`: воспроизведение записи как
+    последовательности пиков. Сам владеет `TTimer` и `TStopwatch`; форма
+    передаёт сессию и колбэки (показ пика, статус, текущий кадр, текущий
+    индекс пика, позиция ползунка, состояние Play/Stop). Пересчёт стартовой
+    позиции при смене скорости перенесён в `TEodPlayer.SetSpeed`.
+  - `GUI.PeakList.pas` — класс `TEodPeakList`: страницы списка пиков
+    (`FillFirstPage`, `FillAroundFrame` с бинарным поиском окна ±100 с,
+    обработка ссылок `<<`/`>>` и правого клика). Держит только ссылку на
+    `TListBox`; показ пика и запись в `edEndSample` — через колбэки.
+- `uReadWavMain.pas`: удалены поля `FPlayTimer/FPlayActive/FPlayIndex/
+  FPlayStartPos/FPlayClock/FPlaySpeed` и `FPeakListFirstIndex/FPeakListRealCount`,
+  методы `StartPlayback/StopPlayback/PlayTimerTick` и
+  `FillPeakList/FillPeakListAroundFrame/PopulatePeakListRange`.
+  `FPlayButtonClick`, `PlaySpeedBoxChange`, `lbPeakListClick`,
+  `lbPeakListMouseDown` стали тонкими делегатами в новые классы; убран
+  неиспользуемый `System.Diagnostics`. Ссылки на сессию у плеера и списка
+  обновляются в `OpenFinished` при замене сессии после открытия WAV.
+- Поведение и математика не изменились: код перенесён 1:1 (немедленный показ
+  первого пика, выбор стартового пика, пропуск промежуточных пиков за один
+  тик, окно списка ±100 с, тексты статусов).
+- Проверено: `cmd /c _build.cmd` — все модули компилируются (DCU для
+  `GUI.Playback`/`GUI.PeakList` созданы), новых предупреждений нет. Финальная
+  линковка не прошла из-за `F2039` (файл `Bin\ReadEOD.exe` занят запущенным
+  приложением) — требуется закрыть приложение и пересобрать.
+- Исправлен давний баг: во время воспроизведения `ShowPeak` на каждом пике
+  перезаполнял `lbPeakList` (двигалась подсветка и подгружались новые окна
+  пиков), что тормозило плей. Теперь показ пика обновляет список только
+  когда плеер не активен (`if not FPlayer.Active`); при остановке плеера
+  список один раз синхронизируется с последним показанным пиком через
+  колбэк состояния. Проверено: собирается (`1835 lines`); поведение в плеере
+  проверяет serjone.
+
 ### 2026-09-19 — Обзор EODPK: бинирование по кадрам; чистка uReadWavMain.pas — Claude
 
 - `Threads.PeakOverview`: бакеты кэша теперь раскладываются по бинам обзора по

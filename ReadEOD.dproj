@@ -239,6 +239,9 @@
         <DCCReference Include="Detection.Detector.pas"/>
         <DCCReference Include="GUI.Model.pas"/>
         <DCCReference Include="GUI.Plot.pas"/>
+        <DCCReference Include="GUI.Playback.pas"/>
+        <DCCReference Include="GUI.PeakList.pas"/>
+        <DCCReference Include="GUI.Analysis.pas"/>
         <DCCReference Include="IO.PeakStore.pas"/>
         <DCCReference Include="IO.SignalCache.pas"/>
         <DCCReference Include="Threads.Analysis.pas"/>

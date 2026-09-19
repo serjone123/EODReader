@@ -113,9 +113,9 @@ object MainForm: TMainForm
   end
   object lbPeakList: TListBox
     Align = Right
-    Position.X = 572.000000000000000000
+    Position.X = 600.000000000000000000
     Position.Y = 34.000000000000000000
-    Size.Width = 136.000000000000000000
+    Size.Width = 108.000000000000000000
     Size.Height = 452.000000000000000000
     Size.PlatformDefault = False
     TabOrder = 1
@@ -126,7 +126,7 @@ object MainForm: TMainForm
     DefaultItemStyles.ItemStyle = ''
     DefaultItemStyles.GroupHeaderStyle = ''
     DefaultItemStyles.GroupFooterStyle = ''
-    Viewport.Width = 132.000000000000000000
+    Viewport.Width = 104.000000000000000000
     Viewport.Height = 448.000000000000000000
   end
   object FStatus: TLabel
@@ -141,19 +141,19 @@ object MainForm: TMainForm
   end
   object LayIMG: TLayout
     Align = Client
-    Size.Width = 507.000000000000000000
+    Size.Width = 535.000000000000000000
     Size.Height = 452.000000000000000000
     Size.PlatformDefault = False
     TabOrder = 3
     object PaintBox: TPaintBox
       Align = Client
-      Size.Width = 507.000000000000000000
-      Size.Height = 350.000000000000000000
+      Size.Width = 535.000000000000000000
+      Size.Height = 343.000000000000000000
       Size.PlatformDefault = False
     end
     object LayNavi: TLayout
       Align = Top
-      Size.Width = 507.000000000000000000
+      Size.Width = 535.000000000000000000
       Size.Height = 33.000000000000000000
       Size.PlatformDefault = False
       TabOrder = 5
@@ -238,7 +238,7 @@ object MainForm: TMainForm
       CanParentFocus = True
       Orientation = Horizontal
       Position.Y = 433.000000000000000000
-      Size.Width = 507.000000000000000000
+      Size.Width = 535.000000000000000000
       Size.Height = 19.000000000000000000
       Size.PlatformDefault = False
       TabOrder = 1
@@ -246,9 +246,9 @@ object MainForm: TMainForm
     end
     object OverviewPaintBox: TPaintBox
       Align = Bottom
-      Position.Y = 383.000000000000000000
-      Size.Width = 507.000000000000000000
-      Size.Height = 50.000000000000000000
+      Position.Y = 376.000000000000000000
+      Size.Width = 535.000000000000000000
+      Size.Height = 57.000000000000000000
       Size.PlatformDefault = False
     end
   end

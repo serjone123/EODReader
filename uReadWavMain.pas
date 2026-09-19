@@ -3,21 +3,21 @@
 interface
 
 uses
-  System.SysUtils, System.Types, System.UITypes, System.Diagnostics,
+  System.SysUtils, System.Types, System.UITypes,
   FMX.Types, FMX.Controls, FMX.Forms, FMX.StdCtrls, FMX.Objects, FMX.Edit,
   FMX.ListBox, FMX.Layouts, FMX.Dialogs, FMX.SpinBox
 , System.Classes, FMX.Controls.Presentation
-, Threads.Analysis
 , Core.Types
 , Detection.Detector
 , IO.PeakStore
 , GUI.Model
 , GUI.Plot
-, Threads.WavOpen
+, GUI.Playback
+, GUI.PeakList
+, GUI.Analysis
 , Core.ConfigStore, GUI.SettingsForm
 , GUI.FileNaming
-, Threads.Overview
-, Threads.PeakOverview, FMX.Menus
+, FMX.Menus
 , Electrode.LayoutForm
 , GUI.VideoExportForm
  ;
@@ -89,12 +89,7 @@ type
     FCurrentPeak: Integer;
     FCurrentStart: Int64;
     FCurrentCount: Integer;
-    FAnalysis: TEodAnalysisThread;
-    FOpenThread: TEodWavOpenThread;
-    FClosing: Boolean;
-
-    FOverviewThread: TEodOverviewThread;
-    FPeakOverviewThread: TEodPeakOverviewThread;
+    FBackground: TEodAnalysisController;
 
     FOverview: TOverviewPlot;
 
@@ -107,30 +102,14 @@ type
     FOverviewChMax: TChannelEnvelopes;
     FOverviewChannelColors: Boolean;
 
-    FPeakListFirstIndex: Integer;
+    FPeakList: TEodPeakList;
 
-    FPeakListRealCount: Integer;
+    FPlayer: TEodPlayer;
 
     FWheelAccumulator: Integer;
 
     FLastDir: string;
 
-    { ------------------------- Воспроизведение ------------------------- }
-    { Плеер "проигрывает" запись как последовательность пиков: таймер
-      ведёт виртуальное время (сэмплы), а в момент, когда наступает время
-      очередного пика, этот пик отображается на графике.
-      FPlayButton/FPlaySpeedBox и их обработчики — published (см. выше),
-      т.к. они связаны с компонентами из uReadWavMain.fmx. }
-    FPlayTimer: TTimer;
-    FPlayActive: Boolean;        // идёт воспроизведение
-    FPlayIndex: Integer;         // индекс следующего пика к показу
-    FPlayStartPos: Int64;        // виртуальное "сейчас" в сэмплах на старте
-    FPlayClock: TStopwatch;      // реальное время с момента старта
-    FPlaySpeed: Double;          // множитель скорости (сэмплы/сек умножаются)
-
-    procedure PlayTimerTick(Sender: TObject);
-    procedure StartPlayback;
-    procedure StopPlayback(Finished: Boolean);
     procedure ApplyPlaybackSpeed;
 
     procedure OverviewClick(Sender: TObject; Frame: Int64);
@@ -143,7 +122,6 @@ type
       const ChannelMin, ChannelMax: TChannelEnvelopes;
       TotalFrames: Int64; Canceled: Boolean;
       const ErrorText: string);
-    procedure OverviewThreadTerminated(Sender: TObject);
 
     procedure PeakOverviewProgress(Sender: TObject; Processed, Total: Int64);
     procedure PeakOverviewFinished(Sender: TObject;
@@ -151,14 +129,12 @@ type
       const ChannelMin, ChannelMax: TChannelEnvelopes;
       TotalFrames: Int64; Canceled: Boolean;
       const ErrorText: string);
-    procedure PeakOverviewThreadTerminated(Sender: TObject);
     procedure StartPeakOverview(const AFileName: string);
 
     procedure UpdateOverviewView(ViewStart, ViewEnd: Int64);
 
     procedure SetOverviewChannelColors(AValue: Boolean);
 
-    procedure FillPeakListAroundFrame(AFrame: Int64);
     procedure UpdateStatus(const S: string);
     procedure UpdateCaption;
     procedure ShowPeak(Index: Integer);
@@ -168,19 +144,15 @@ type
     function ReadInt64Edit(AEdit: TEdit; const ADefault: Int64): Int64;
     procedure SetRangeEdits(AStart, AEnd: Int64);
     procedure UpdateRangeDisplay;
-    procedure PopulatePeakListRange(const Peaks: TPeakArray; FirstIndex: Int64;
-      Total: Int64);
-    procedure FillPeakList;
     procedure StartAnalysis(MaxFrames: Int64);
     procedure AnalysisProgress(Sender: TObject; Processed, Total: Int64);
     procedure AnalysisFinished(Sender: TObject; const Peaks: TPeakArray;
       Canceled: Boolean; const ErrorText: string);
-    procedure AnalysisThreadTerminated(Sender: TObject);
     procedure OpenProgress(Stage: Integer; const Text: string);
     procedure OpenFinished(Session: TEodGuiSession;
       Canceled: Boolean; const ErrorText: string);
-    procedure OpenThreadTerminated(Sender: TObject);
     procedure SetAnalysisUiState(Analyzing: Boolean);
+    procedure BackgroundCloseRequest(Sender: TObject);
     procedure UpdatePlotMode;
     procedure PlotViewChanged(Sender: TObject; ViewStart, ViewEnd: Int64);
     { Обзорный график в цветах каналов 1..4 (как у основного графика).
@@ -215,12 +187,19 @@ begin
   FDetector := TEodDetector.Create(FConfig);
 
   FCurrentPeak := -1;
-  FAnalysis := nil;
-  FOpenThread := nil;
-  FClosing := False;
 
-  FOverviewThread := nil;
-  FPeakOverviewThread := nil;
+  { Владелец фоновых воркеров (GUI.Analysis.pas). Реакция на прогресс и
+    результаты остаётся здесь, в форме; контроллер лишь дергает события. }
+  FBackground := TEodAnalysisController.Create;
+  FBackground.OnAnalysisProgress := AnalysisProgress;
+  FBackground.OnAnalysisFinished := AnalysisFinished;
+  FBackground.OnOpenProgress := OpenProgress;
+  FBackground.OnOpenFinished := OpenFinished;
+  FBackground.OnOverviewProgress := OverviewProgress;
+  FBackground.OnOverviewFinished := OverviewFinished;
+  FBackground.OnPeakOverviewProgress := PeakOverviewProgress;
+  FBackground.OnPeakOverviewFinished := PeakOverviewFinished;
+  FBackground.OnCloseRequest := BackgroundCloseRequest;
 
   FModeBox.Items.Clear;
   FModeBox.Items.Add('RAW - 4 channels');
@@ -247,8 +226,15 @@ begin
   edStartSample.OnChange := edStartSampleChange;
   edEndSample.OnChange := edEndSampleChange;
 
-  FPeakListFirstIndex := 0;
-  FPeakListRealCount := 0;
+  FPeakList := TEodPeakList.Create(lbPeakList, FSession,
+    procedure(Index: Integer)
+    begin
+      ShowPeak(Index);
+    end,
+    procedure(const S: string)
+    begin
+      edEndSample.Text := S;
+    end);
   FWheelAccumulator := 0;
 
   { Код позиционного ползунка использует Value/1000, поэтому Max обязан
@@ -267,17 +253,50 @@ begin
   FPlaySpeedBox.Items.Add('10x');
   FPlaySpeedBox.ItemIndex := 3;
   FPlaySpeedBox.OnChange := PlaySpeedBoxChange;
+
+  { Плеер (GUI.Playback.pas) работает кодами: сам ведёт таймер и не знает
+    ни о форме, ни о ListBox; весь обмен — через колбэки ниже. }
+  FPlayer := TEodPlayer.Create(FSession,
+    procedure(Index: Integer)
+    begin
+      ShowPeak(Index);
+    end,
+    procedure(const S: string)
+    begin
+      UpdateStatus(S);
+    end,
+    function: Int64
+    begin
+      Result := CurrentFrame;
+    end,
+    function: Integer
+    begin
+      Result := FCurrentPeak;
+    end,
+    procedure(P: Double)
+    begin
+      FUpdating := True;
+      try
+        FPositionBar.Value := P * 1000;
+      finally
+        FUpdating := False;
+      end;
+    end,
+    procedure(Active: Boolean)
+    begin
+      if Active then
+        FPlayButton.Text := 'Stop'
+      else
+      begin
+        FPlayButton.Text := 'Play';
+        { Во время плея список не обновлялся — синхронизируем его один раз
+          с последним показанным пиком. }
+        if (FCurrentPeak >= 0) and (FCurrentPeak < FSession.PeakCount) then
+          FPeakList.FillAroundFrame(FSession.GetPeakPosition(FCurrentPeak));
+      end;
+    end);
+
   ApplyPlaybackSpeed;
-
-  FPlayTimer := TTimer.Create(Self);
-  FPlayTimer.Interval := 30;
-  FPlayTimer.OnTimer := PlayTimerTick;
-  FPlayTimer.Enabled := False;
-
-  FPlayActive := False;
-  FPlayIndex := 0;
-  FPlayStartPos := 0;
-  FPlaySpeed := 1.0;
 
   FStatus.Text := '';
 
@@ -286,18 +305,17 @@ end;
 
 procedure TMainForm.FormDestroy(Sender: TObject);
 begin
-  FClosing := True;
+  { Обычно к этому моменту воркеры уже завершены: FormCloseQuery не даёт
+    дойти до FormDestroy, пока работает хотя бы один. }
+  FBackground.CancelAll;
+  FBackground.Free;
+  FBackground := nil;
 
-  { Обычно к этому моменту FAnalysis уже nil: FormCloseQuery не даёт дойти
-    до FormDestroy, пока работает воркер. }
-  if Assigned(FAnalysis) then
-    FAnalysis.Cancel;
-  if Assigned(FOpenThread) then
-    FOpenThread.Cancel;
-  if Assigned(FOverviewThread) then
-    FOverviewThread.Cancel;
-  if Assigned(FPeakOverviewThread) then
-    FPeakOverviewThread.Cancel;
+  FPlayer.Free;
+  FPlayer := nil;
+
+  FPeakList.Free;
+  FPeakList := nil;
 
   FOverview.Free;
   FOverview := nil;
@@ -309,25 +327,19 @@ begin
   FSession.Free;
 end;
 
+procedure TMainForm.BackgroundCloseRequest(Sender: TObject);
+begin
+  Close;
+end;
+
 procedure TMainForm.FormCloseQuery(Sender: TObject; var CanClose: Boolean);
 begin
   { Плеер живёт только в главном потоке — его достаточно просто остановить. }
-  StopPlayback(False);
+  FPlayer.Stop(False);
 
-  if Assigned(FAnalysis) or
-     Assigned(FOpenThread) or
-     Assigned(FOverviewThread) or
-     Assigned(FPeakOverviewThread) then
+  if FBackground.AnyRunning then
   begin
-    FClosing := True;
-    if Assigned(FAnalysis) then
-      FAnalysis.Cancel;
-    if Assigned(FOpenThread) then
-      FOpenThread.Cancel;
-    if Assigned(FOverviewThread) then
-      FOverviewThread.Cancel;
-    if Assigned(FPeakOverviewThread) then
-      FPeakOverviewThread.Cancel;
+    FBackground.CancelAll;
     CanClose := False;
     UpdateStatus('Stopping background operation...');
     Exit;
@@ -339,7 +351,7 @@ end;
 procedure TMainForm.AnalysisFinished(Sender: TObject; const Peaks: TPeakArray;
   Canceled: Boolean; const ErrorText: string);
 begin
-  if FClosing then
+  if FBackground.Closing then
     Exit;
 
   if Canceled then
@@ -359,7 +371,7 @@ begin
   else
   begin
     FSession.SetPeaks(Peaks);
-    FillPeakListAroundFrame(FSession.GetPeakPosition(0));
+    FPeakList.FillAroundFrame(FSession.GetPeakPosition(0));
 
     if Length(Peaks) > 0 then
       ShowPeak(0);
@@ -374,7 +386,7 @@ procedure TMainForm.AnalysisProgress(Sender: TObject; Processed, Total: Int64);
 var
   Percent: Integer;
 begin
-  if FClosing then
+  if FBackground.Closing then
     Exit;
 
   if Total > 0 then
@@ -392,22 +404,11 @@ begin
     [Percent, Processed, Total]));
 end;
 
-procedure TMainForm.AnalysisThreadTerminated(Sender: TObject);
-begin
-  { Воркер работает с FreeOnTerminate=True. OnTerminate нужен только чтобы
-    сбросить нашу ссылку и, если запрошено, дать форме закрыться. }
-  if FAnalysis = Sender then
-    FAnalysis := nil;
-
-  if FClosing then
-    Close;
-end;
-
 procedure TMainForm.SetAnalysisUiState(Analyzing: Boolean);
 begin
   if Analyzing then
     { Анализ/открытие WAV ломает текущую сессию — плей останавливаем. }
-    StopPlayback(False);
+    FPlayer.Stop(False);
 
   FOpenWavButton.Enabled := not Analyzing;
   FOpenPeakButton.Enabled := not Analyzing;
@@ -433,7 +434,7 @@ end;
 procedure TMainForm.OpenProgress(Stage: Integer;
   const Text: string);
 begin
-  if FClosing then
+  if FBackground.Closing then
     Exit;
   UpdateStatus(Format('Opening WAV: %d%% - %s', [Stage, Text]));
 end;
@@ -443,7 +444,7 @@ procedure TMainForm.OpenFinished(Session: TEodGuiSession;
 var
   OldSession: TEodGuiSession;
 begin
-  if FClosing then
+  if FBackground.Closing then
   begin
     Session.Free;
     Exit;
@@ -465,6 +466,8 @@ begin
 
   OldSession := FSession;
   FSession := Session;
+  FPlayer.Session := FSession;
+  FPeakList.Session := FSession;
   if FSession.TotalFrames > 0 then
   begin
     { В режиме WAV под вид выделяется сырой буфер, поэтому максимальная
@@ -482,7 +485,7 @@ begin
   FCurrentStart := 0;
   FCurrentCount := 201;
 
-  FillPeakList;
+  FPeakList.FillFirstPage;
   SetAnalysisUiState(False);
 
   SetRangeEdits(0, 200);
@@ -494,15 +497,6 @@ begin
     FSession.TotalFrames]));
 
   UpdateCaption;
-end;
-
-procedure TMainForm.OpenThreadTerminated(Sender: TObject);
-begin
-  if FOpenThread = Sender then
-    FOpenThread := nil;
-
-  if FClosing then
-    Close;
 end;
 
 procedure TMainForm.PlotViewChanged(Sender: TObject; ViewStart, ViewEnd: Int64);
@@ -569,32 +563,6 @@ begin
     Caption := 'EOD Viewer - ' + NameText + ' | ' + InfoText;
 
   FOpenFolderButton.Enabled := NameText <> '';
-end;
-
-procedure TMainForm.FillPeakList;
-const
-  MaxListPeaks = 1000;
-var
-  Total: Int64;
-  Count: Int64;
-  Peaks: TPeakArray;
-begin
-  Total := FSession.PeakCount;
-
-  if Total <= 0 then
-  begin
-    lbPeakList.Clear;
-    FPeakListFirstIndex := 0;
-    FPeakListRealCount := 0;
-    Exit;
-  end;
-
-  Count := Min(Total, Int64(MaxListPeaks));
-
-  if not FSession.ReadPeakInfoRange(0, Count, Peaks) then
-    Exit;
-
-  PopulatePeakListRange(Peaks, 0, Total);
 end;
 
 function TMainForm.ReadInt64Edit(AEdit: TEdit; const ADefault: Int64): Int64;
@@ -691,7 +659,7 @@ begin
   if (Index < 0) or (Index >= FSession.PeakCount) then
     Exit;
 
-  { Убран ручной ItemIndex — теперь делает FillPeakListAroundFrame }
+  { Убран ручной ItemIndex — теперь делает TEodPeakList.FillAroundFrame }
 
   if FSession.Mode = dmPeakFile then
     Data := FSession.ReadPeak(Index, Peak, StartFrame)
@@ -736,8 +704,12 @@ begin
     [Index + 1, FSession.PeakCount, Peak.Position,
     Peak.Position / FSession.SampleRate, Peak.Prominence]));
 
-  { Перезаполняем ListBox только если нужно, иначе просто подсвечиваем }
-  FillPeakListAroundFrame(Peak.Position);
+  { Перезаполняем ListBox только если нужно, иначе просто подсвечиваем.
+    Во время воспроизведения список не трогаем: обновление на каждый пик
+    тормозит плей; при остановке список синхронизируется один раз
+    (колбэк состояния плеера в FormCreate). }
+  if not FPlayer.Active then
+    FPeakList.FillAroundFrame(Peak.Position);
 end;
 
 procedure TMainForm.ShowPeakFileRange(AStartFrame, AEndFrame: Int64);
@@ -961,7 +933,7 @@ end;
 
 procedure TMainForm.StartAnalysis(MaxFrames: Int64);
 begin
-  if Assigned(FAnalysis) then
+  if FBackground.AnalysisRunning then
     Exit;
 
   lbPeakList.Clear;
@@ -971,13 +943,7 @@ begin
   SetAnalysisUiState(True);
   UpdateStatus('Starting analysis...');
 
-  FAnalysis := TEodAnalysisThread.Create(FSession.File1, FSession.File2,
-    FConfig, MaxFrames);
-
-  FAnalysis.OnProgress := AnalysisProgress;
-  FAnalysis.OnFinished := AnalysisFinished;
-  FAnalysis.OnTerminate := AnalysisThreadTerminated;
-  FAnalysis.Start;
+  FBackground.StartAnalysis(FSession.File1, FSession.File2, FConfig, MaxFrames);
 end;
 
 
@@ -988,9 +954,9 @@ var
 begin
   { Та же кнопка служит командой немедленной отмены, пока работает воркер.
     WaitFor здесь не вызываем — интерфейс остаётся отзывчивым. }
-  if Assigned(FAnalysis) then
+  if FBackground.AnalysisRunning then
   begin
-    FAnalysis.Cancel;
+    FBackground.CancelAnalysis;
     FAnalyzeButton.Enabled := False;
     UpdateStatus('Cancel requested...');
     Exit;
@@ -1052,193 +1018,34 @@ begin
 end;
 
 { ================================================================== }
-{  Воспроизведение                                                   }
+{  Воспроизведение (код в GUI.Playback.pas — TEodPlayer)             }
 { ================================================================== }
 
 procedure TMainForm.ApplyPlaybackSpeed;
 begin
   case FPlaySpeedBox.ItemIndex of
-    0: FPlaySpeed := 0.1;
-    1: FPlaySpeed := 0.25;
-    2: FPlaySpeed := 0.5;
-    4: FPlaySpeed := 2.0;
-    5: FPlaySpeed := 5.0;
-    6: FPlaySpeed := 10.0;
+    0: FPlayer.Speed := 0.1;
+    1: FPlayer.Speed := 0.25;
+    2: FPlayer.Speed := 0.5;
+    4: FPlayer.Speed := 2.0;
+    5: FPlayer.Speed := 5.0;
+    6: FPlayer.Speed := 10.0;
   else
-    FPlaySpeed := 1.0;
+    FPlayer.Speed := 1.0;
   end;
 end;
 
 procedure TMainForm.PlaySpeedBoxChange(Sender: TObject);
-var
-  ElapsedS: Double;
 begin
-  if FPlayActive then
-  begin
-    { Фиксируем текущую виртуальную позицию и перезапускаем часы,
-      чтобы смена скорости не дала скачка вперёд или назад. }
-    ElapsedS := FPlayClock.Elapsed.TotalSeconds;
-    FPlayStartPos := FPlayStartPos +
-      Trunc(ElapsedS * FSession.SampleRate * FPlaySpeed);
-    FPlayClock := TStopwatch.StartNew;
-  end;
-
   ApplyPlaybackSpeed;
 end;
 
 procedure TMainForm.FPlayButtonClick(Sender: TObject);
 begin
-  if FPlayActive then
-    StopPlayback(False)
+  if FPlayer.Active then
+    FPlayer.Stop(False)
   else
-    StartPlayback;
-end;
-
-procedure TMainForm.StartPlayback;
-var
-  Total: Integer;
-  L, R, Mid: Int64;
-  Pos: Int64;
-  StartFrame: Int64;
-begin
-  if FPlayActive then
-    Exit;
-
-  if FSession.Mode = dmNone then
-    Exit;
-
-  Total := FSession.PeakCount;
-
-  if Total <= 0 then
-  begin
-    UpdateStatus('Nothing to play: no peaks.');
-    Exit;
-  end;
-
-  if FSession.SampleRate <= 0 then
-    Exit;
-
-  { Если стоим на последнем пике (например, после полного прохода) —
-    начинаем с начала, иначе это дало бы мгновенный "пустой" плей. }
-  if FCurrentPeak >= Total - 1 then
-    FPlayIndex := 0
-  else if FCurrentPeak >= 0 then
-    FPlayIndex := FCurrentPeak
-  else
-  begin
-    { Пик не выбран: берём первый пик от текущего начала отображения. }
-    StartFrame := CurrentFrame;
-
-    L := 0;
-    R := Total - 1;
-    while L < R do
-    begin
-      Mid := L + (R - L) div 2;
-      Pos := FSession.GetPeakPosition(Integer(Mid));
-      if Pos < StartFrame then
-        L := Mid + 1
-      else
-        R := Mid;
-    end;
-
-    FPlayIndex := Integer(L);
-
-    { Если текущая позиция находится после последнего пика (поиск
-      вышел за конец) — начинаем с последнего пика. }
-    if FPlayIndex >= Total then
-      FPlayIndex := Total - 1;
-  end;
-
-  FPlayStartPos := FSession.GetPeakPosition(FPlayIndex);
-  FPlayClock := TStopwatch.StartNew;
-  FPlayActive := True;
-
-  FPlayButton.Text := 'Stop';
-
-  { Первый пик показываем немедленно, дальше их ведёт таймер. }
-  ShowPeak(FPlayIndex);
-  Inc(FPlayIndex);
-
-  FPlayTimer.Enabled := True;
-
-  UpdateStatus(Format('Playing: peak %d/%d, speed %gx',
-    [FCurrentPeak + 1, Total, FPlaySpeed]));
-end;
-
-procedure TMainForm.StopPlayback(Finished: Boolean);
-begin
-  if not FPlayActive then
-    Exit;
-
-  FPlayTimer.Enabled := False;
-  FPlayActive := False;
-  FPlayButton.Text := 'Play';
-
-  if Finished then
-    UpdateStatus(Format('Playback finished at peak %d/%d.',
-      [FCurrentPeak + 1, FSession.PeakCount]))
-  else
-    UpdateStatus(Format('Playback stopped at peak %d/%d.',
-      [FCurrentPeak + 1, FSession.PeakCount]));
-end;
-
-procedure TMainForm.PlayTimerTick(Sender: TObject);
-var
-  Total: Integer;
-  VirtualNow: Int64;
-  ElapsedS: Double;
-  ShowIdx: Integer;
-  P: Double;
-begin
-  if not FPlayActive then
-    Exit;
-
-  Total := FSession.PeakCount;
-
-  if Total <= 0 then
-  begin
-    StopPlayback(False);
-    Exit;
-  end;
-
-  { Виртуальное "сейчас" в сэмплах: старт + реальное время * скорость.
-    Скорость 1x соответствует реальному темпу записи. }
-  ElapsedS := FPlayClock.Elapsed.TotalSeconds;
-  VirtualNow := FPlayStartPos +
-    Trunc(ElapsedS * FSession.SampleRate * FPlaySpeed);
-
-  { За один тик может наступить время нескольких пиков — показываем
-    последний из них, промежуточные пропускаем. }
-  ShowIdx := -1;
-  while (FPlayIndex < Total) and
-        (FSession.GetPeakPosition(FPlayIndex) <= VirtualNow) do
-  begin
-    ShowIdx := FPlayIndex;
-    Inc(FPlayIndex);
-  end;
-
-  if ShowIdx >= 0 then
-    ShowPeak(ShowIdx);
-
-  { Ползунок позиции двигаем молча — сам он перерисовывать ничего не должен. }
-  if FSession.TotalFrames > 0 then
-  begin
-    P := VirtualNow / FSession.TotalFrames;
-    if P < 0 then
-      P := 0
-    else if P > 1 then
-      P := 1;
-
-    FUpdating := True;
-    try
-      FPositionBar.Value := P * 1000;
-    finally
-      FUpdating := False;
-    end;
-  end;
-
-  if FPlayIndex >= Total then
-    StopPlayback(True);
+    FPlayer.Start;
 end;
 
 procedure TMainForm.FOpenPeakButtonClick(Sender: TObject);
@@ -1246,7 +1053,7 @@ var
   D: TOpenDialog;
   StartFrame, EndFrame: Int64;
 begin
-  StopPlayback(False);
+  FPlayer.Stop(False);
 
   D := TOpenDialog.Create(Self);
   try
@@ -1276,7 +1083,7 @@ begin
 
     FCurrentPeak := -1;
 
-    FillPeakList;
+    FPeakList.FillFirstPage;
 
     if FSession.PeakCount > 0 then
     begin
@@ -1308,7 +1115,7 @@ var
   D: TOpenDialog;
   File1, File2: string;
 begin
-  if Assigned(FOpenThread) or Assigned(FAnalysis) then
+  if FBackground.OpenRunning or FBackground.AnalysisRunning then
     Exit;
 
   D := TOpenDialog.Create(Self);
@@ -1361,9 +1168,7 @@ begin
     D.Free;
   end;
 
-  FOpenThread := TEodWavOpenThread.Create(File1, File2, OpenProgress, OpenFinished);
-  FOpenThread.OnTerminate := OpenThreadTerminated;
-  FOpenThread.Start;
+  FBackground.StartOpenWav(File1, File2);
 
   SetAnalysisUiState(True);
   FAnalyzeButton.Enabled := False;
@@ -1374,18 +1179,9 @@ end;
 
 procedure TMainForm.lbPeakListMouseDown(Sender: TObject; Button: TMouseButton;
   Shift: TShiftState; X, Y: Single);
-var
-  S: string;
 begin
-  if (Button <> TMouseButton.mbRight) or (lbPeakList.Selected = nil) then
-    Exit;
-
-  S := lbPeakList.Selected.Text;
-  if S.StartsWith('<<') or S.StartsWith('>>') then
-    Exit;
-
-  { edEndSample.OnChange (edEndSampleChange) сам пересчитает edRange. }
-  edEndSample.Text := S;
+  if Button = TMouseButton.mbRight then
+    FPeakList.HandleRightClick;
 end;
 
 procedure TMainForm.FPositionBarChange(Sender: TObject);
@@ -1439,7 +1235,7 @@ procedure TMainForm.FSaveButtonClick(Sender: TObject);
 var
   D: TSaveDialog;
 begin
-  if Assigned(FAnalysis) then
+  if FBackground.AnalysisRunning then
   begin
     UpdateStatus('Analysis is still running.');
     Exit;
@@ -1573,7 +1369,7 @@ begin
 
   { Заполняем ListBox пиками вокруг выбранной на обзоре точки
     и подсвечиваем ближайший к ней пик. }
-  FillPeakListAroundFrame(Frame);
+  FPeakList.FillAroundFrame(Frame);
 end;
 
 
@@ -1600,191 +1396,12 @@ begin
   UpdateOverviewView(ViewStart, ViewEnd);
 end;
 
-procedure TMainForm.PopulatePeakListRange(const Peaks: TPeakArray;
-  FirstIndex: Int64; Total: Int64);
-var
-  I: Integer;
-  LastIndex: Int64;
-begin
-  if Length(Peaks) = 0 then
-  begin
-    lbPeakList.Clear;
-    FPeakListFirstIndex := 0;
-    FPeakListRealCount := 0;
-    Exit;
-  end;
-
-  LastIndex := FirstIndex + Length(Peaks) - 1;
-
-  FPeakListFirstIndex := FirstIndex;
-
-  FPeakListRealCount := Length(Peaks);
-
-  lbPeakList.BeginUpdate;
-  try
-    lbPeakList.Clear;
-
-    { Ссылка "<<" в начало, если перед окном есть ещё элементы }
-    if FirstIndex > 0 then
-      lbPeakList.Items.Add(Format('<<  (%d more)', [FirstIndex]));
-
-    for I := 0 to High(Peaks) do
-      lbPeakList.Items.Add(Peaks[I].Position.ToString);
-
-    { Ссылка ">>" в конец, если после окна есть ещё элементы }
-    if LastIndex < Total - 1 then
-      lbPeakList.Items.Add(Format('>>  (%d more)', [Total - 1 - LastIndex]));
-  finally
-    lbPeakList.EndUpdate;
-  end;
-end;
-
-procedure TMainForm.FillPeakListAroundFrame(AFrame: Int64);
-const
-  HalfWindow = 100;
-var
-  Total: Int64;
-  L, R, Mid: Int64;
-  Pos: Int64;
-  BestIndex: Int64;
-  BestDistance: Int64;
-  Distance: Int64;
-
-  WindowFirst: Int64;
-  WindowCount: Int64;
-
-  Peaks: TPeakArray;
-
-  ListIndex: Integer;
-begin
-  Total := FSession.PeakCount;
-
-  if Total <= 0 then
-  begin
-    lbPeakList.Clear;
-    FPeakListFirstIndex := 0;
-    FPeakListRealCount := 0;
-    Exit;
-  end;
-
-  { ------------------------------------------------------------
-    Ищем первый peak с Position >= AFrame.
-    Работаем только через TEodGuiSession.
-    ------------------------------------------------------------ }
-
-  L := 0;
-  R := Total - 1;
-
-  while L < R do
-  begin
-    Mid := L + (R - L) div 2;
-
-    Pos := FSession.GetPeakPosition(Integer(Mid));
-
-    if Pos < 0 then
-      Exit;
-
-    if Pos < AFrame then
-      L := Mid + 1
-    else
-      R := Mid;
-  end;
-
-  BestIndex := L;
-
-  { Проверяем ближайший peak слева. }
-
-  Pos := FSession.GetPeakPosition(Integer(L));
-
-  if Pos < 0 then
-    Exit;
-
-  BestDistance := Abs(Pos - AFrame);
-
-  if L > 0 then
-  begin
-    Pos := FSession.GetPeakPosition(Integer(L - 1));
-
-    if Pos < 0 then
-      Exit;
-
-    Distance := Abs(Pos - AFrame);
-
-    if Distance < BestDistance then
-    begin
-      BestIndex := L - 1;
-    end;
-  end;
-
-  { ------------------------------------------------------------
-    Если найденный peak уже находится в ListBox —
-    просто выделяем его.
-    ------------------------------------------------------------ }
-
-  if (FPeakListRealCount > 0) and
-     (BestIndex >= FPeakListFirstIndex) and
-     (BestIndex < FPeakListFirstIndex + FPeakListRealCount) then
-  begin
-    ListIndex := Integer(BestIndex - FPeakListFirstIndex);
-
-    if FPeakListFirstIndex > 0 then
-      Inc(ListIndex);
-
-    if (ListIndex >= 0) and
-       (ListIndex < lbPeakList.Count) then
-      lbPeakList.ItemIndex := ListIndex;
-
-    Exit;
-  end;
-
-  { ------------------------------------------------------------
-    Загружаем окно вокруг найденного peak.
-    ------------------------------------------------------------ }
-
-  WindowFirst := Max(Int64(0), BestIndex - HalfWindow);
-
-  WindowCount := Min(
-    Int64(HalfWindow * 2 + 1),
-    Total - WindowFirst);
-
-  if WindowCount <= 0 then
-    Exit;
-
-  if not FSession.ReadPeakInfoRange(
-    WindowFirst,
-    WindowCount,
-    Peaks) then
-    Exit;
-
-  PopulatePeakListRange(
-    Peaks,
-    WindowFirst,
-    Total);
-
-  { ------------------------------------------------------------
-    Выделяем найденный peak.
-    ------------------------------------------------------------ }
-
-  if (BestIndex >= WindowFirst) and
-     (BestIndex < WindowFirst + Length(Peaks)) then
-  begin
-    ListIndex := Integer(BestIndex - WindowFirst);
-
-    if WindowFirst > 0 then
-      Inc(ListIndex);
-
-    if (ListIndex >= 0) and
-       (ListIndex < lbPeakList.Count) then
-      lbPeakList.ItemIndex := ListIndex;
-  end;
-end;
-
 procedure TMainForm.FSettingsButtonClick(Sender: TObject);
 var
   Dlg: TEodSettingsForm;
   NewConfig: TEodDetectorConfig;
 begin
-  if Assigned(FAnalysis) then
+  if FBackground.AnalysisRunning then
   begin
     UpdateStatus('Cannot change settings while analysis is running.');
     Exit;
@@ -1809,24 +1426,14 @@ end;
 
 procedure TMainForm.StartOverview;
 begin
-  if FClosing or (FSession.Mode <> dmWav) then
+  if FBackground.Closing or (FSession.Mode <> dmWav) then
     Exit;
-
-  if Assigned(FOverviewThread) then
-    FOverviewThread.Cancel;
 
   FOverview.Clear;
 
-  FOverviewThread := TEodOverviewThread.Create(
-    FSession.File1,
-    FSession.File2);
-
-  FOverviewThread.OnProgress := OverviewProgress;
-  FOverviewThread.OnFinished := OverviewFinished;
-  FOverviewThread.OnTerminate := OverviewThreadTerminated;
-  FOverviewThread.Start;
-
   UpdateStatus('Building overview in background...');
+
+  FBackground.StartOverview(FSession.File1, FSession.File2);
 end;
 
 procedure TMainForm.OverviewProgress(Sender: TObject;
@@ -1834,7 +1441,7 @@ procedure TMainForm.OverviewProgress(Sender: TObject;
 var
   Percent: Integer;
 begin
-  if FClosing then
+  if FBackground.Closing then
     Exit;
 
   if Total > 0 then
@@ -1856,7 +1463,7 @@ procedure TMainForm.OverviewFinished(Sender: TObject;
   TotalFrames: Int64; Canceled: Boolean;
   const ErrorText: string);
 begin
-  if FClosing then
+  if FBackground.Closing then
     Exit;
 
   if Canceled then
@@ -1901,34 +1508,21 @@ begin
      FSession.TotalFrames]));
 end;
 
-procedure TMainForm.OverviewThreadTerminated(Sender: TObject);
-begin
-  if FOverviewThread = Sender then
-    FOverviewThread := nil;
-
-  if FClosing then
-    Close;
-end;
-
 procedure TMainForm.StartPeakOverview(const AFileName: string);
 var
   Ch: Integer;
 begin
-  if FClosing then
+  if FBackground.Closing then
     Exit;
 
-  if Assigned(FOverviewThread) then
+  if FBackground.OverviewRunning then
   begin
-    FOverviewThread.Cancel;
+    FBackground.CancelOverview;
     Exit;
   end;
 
   if AFileName = '' then
     Exit;
-
-  { Предыдущий расчёт (например, при смене режима бакетов) отменяем. }
-  if Assigned(FPeakOverviewThread) then
-    FPeakOverviewThread.Cancel;
 
   FOverviewMin := nil;
   FOverviewMax := nil;
@@ -1941,12 +1535,7 @@ begin
 
   UpdateStatus('Building EODPK overview...');
 
-  FPeakOverviewThread := TEodPeakOverviewThread.Create(AFileName, 2000);
-  FPeakOverviewThread.SpreadBuckets := cbBucketModeBox.ItemIndex = 0;
-  FPeakOverviewThread.OnProgress := PeakOverviewProgress;
-  FPeakOverviewThread.OnFinished := PeakOverviewFinished;
-  FPeakOverviewThread.OnTerminate := PeakOverviewThreadTerminated;
-  FPeakOverviewThread.Start;
+  FBackground.StartPeakOverview(AFileName, cbBucketModeBox.ItemIndex = 0);
 end;
 
 procedure TMainForm.PeakOverviewFinished(Sender: TObject;
@@ -1957,7 +1546,7 @@ procedure TMainForm.PeakOverviewFinished(Sender: TObject;
 var
   I: Integer;
 begin
-  if FClosing then
+  if FBackground.Closing then
     Exit;
 
   if Canceled then
@@ -2016,7 +1605,7 @@ procedure TMainForm.PeakOverviewProgress(Sender: TObject; Processed,
 var
   Percent: Integer;
 begin
-  if FClosing then
+  if FBackground.Closing then
     Exit;
 
   if Total > 0 then
@@ -2030,15 +1619,6 @@ begin
     Percent := 100;
 
   UpdateStatus(Format('Building overview: %d%%', [Percent]));
-end;
-
-procedure TMainForm.PeakOverviewThreadTerminated(Sender: TObject);
-begin
-  if FPeakOverviewThread = Sender then
-    FPeakOverviewThread := nil;
-
-  if FClosing then
-    Close;
 end;
 
 procedure TMainForm.btGeometryClick(Sender: TObject);
@@ -2117,38 +1697,8 @@ begin
 end;
 
 procedure TMainForm.lbPeakListClick(Sender: TObject);
-var
-  PeakIndex: Integer;
-  S: string;
 begin
-  if lbPeakList.ItemIndex < 0 then
-    Exit;
-  S := lbPeakList.Items[lbPeakList.ItemIndex];
-  { Обработка навигационных элементов }
-  if S.StartsWith('<<') then
-  begin
-    { Листаем назад: предыдущее окно, крайний правый реальный элемент }
-    PeakIndex := Max(0, FPeakListFirstIndex - 1);
-    ShowPeak(PeakIndex);
-    Exit;
-  end;
-  if S.StartsWith('>>') then
-  begin
-    { Листаем вперёд: следующее окно, крайний левый реальный элемент }
-    PeakIndex := Min(FSession.PeakCount - 1, FPeakListFirstIndex +
-      FPeakListRealCount);
-    ShowPeak(PeakIndex);
-    Exit;
-  end;
-  { Обычный пик }
-  PeakIndex := FPeakListFirstIndex + lbPeakList.ItemIndex;
-  if FPeakListFirstIndex > 0 then
-    Dec(PeakIndex); // компенсация элемента "<<"
-  if (PeakIndex >= 0) and (PeakIndex < FSession.PeakCount) then
-  begin
-    FCurrentPeak := PeakIndex;
-    ShowPeak(PeakIndex);
-  end;
+  FPeakList.HandleClick;
 end;
 
 end.
