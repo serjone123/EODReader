@@ -112,6 +112,9 @@ begin
     ChunkID := ReadFourCC;
     ChunkSize := ReadUInt32;
     ChunkEnd := FStream.Position + ChunkSize;
+    if ChunkEnd > FStream.Size then
+      raise Exception.CreateFmt(
+        'WAV chunk "%s" extends beyond the end of the file', [ChunkID]);
 
     if ChunkID = 'fmt ' then
     begin
@@ -178,6 +181,16 @@ begin
     raise Exception.CreateFmt('Unsupported PCM bit depth: %d', [FBitsPerSample]);
   if (FEncoding = weIEEEFloat) and not (FBitsPerSample in [32,64]) then
     raise Exception.CreateFmt('Unsupported float bit depth: %d', [FBitsPerSample]);
+  { Согласованность параметров: нулевая/отрицательная частота дискретизации
+    или несовпадение BlockAlign с Channels*BytesPerSample означают испорченный
+    файл. Раньше такие WAV проходили парсинг, а падали невнятной ошибкой уже
+    при чтении данных. }
+  if FSampleRate <= 0 then
+    raise Exception.Create('Invalid WAV sample rate');
+  if FBlockAlign <> FChannels * (FBitsPerSample div 8) then
+    raise Exception.CreateFmt(
+      'WAV block alignment %d does not match %d channels = %d bytes/sample',
+      [FBlockAlign, FChannels, FBitsPerSample div 8]);
 
   FFrameCount := FDataSize div FBlockAlign;
   FStream.Position := FDataOffset;

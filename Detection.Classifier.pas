@@ -51,10 +51,18 @@ var
 begin
   SetLength(Result, 0);
 
+  { Семантика позиции события (см. Core.Types.TEodEvent).
+    'AbsoluteStart' — нулевой кадр окна 'Test' в исходной записи;
+    'R.Position' — нулевой сдвиг начала шаблона внутри окна;
+    'Length(Template) div 2' — центр шаблона. Для C = [zeros, Template, zeros]
+    из corr_et.m это соответствует позиции центра шаблона (середины EOD).
+    В матлаб-эталоне: xx_locs = c_et + xb + corr_ind(chan), где
+    c_et = int32(length(EOD_GP)/2) — та же величина. }
+
   R := FindBestTemplateOn4Channels(FGnat, Test);
   if R.Correlation > Threshold then
   begin
-    E.Position := AbsoluteStart + R.Position;
+    E.Position := AbsoluteStart + R.Position + (Length(FGnat) div 2);
     E.FishType := ftGnat;
     E.Correlation := R.Correlation;
     E.Channel := R.Channel;
@@ -64,7 +72,7 @@ begin
   R := FindBestTemplateOn4Channels(FMorm, Test);
   if R.Correlation > Threshold then
   begin
-    E.Position := AbsoluteStart + R.Position;
+    E.Position := AbsoluteStart + R.Position + (Length(FMorm) div 2);
     E.FishType := ftMorm;
     E.Correlation := R.Correlation;
     E.Channel := R.Channel;
@@ -74,7 +82,7 @@ begin
   R := FindBestTemplateOn4Channels(FStim, Test);
   if R.Correlation > Threshold then
   begin
-    E.Position := AbsoluteStart + R.Position;
+    E.Position := AbsoluteStart + R.Position + (Length(FStim) div 2);
     E.FishType := ftStim;
     E.Correlation := R.Correlation;
     E.Channel := R.Channel;

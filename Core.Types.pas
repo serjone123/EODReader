@@ -56,8 +56,14 @@ type
     Channel: Integer;  // zero-based
   end;
 
+  { Событие классификации. Position — нулевой кадр CENTRA шаблона
+    (середины EOD-выброса) в исходной записи, т.е.
+    (начало окна) + (сдвиг шаблона) + Length(шаблон) div 2 —
+    соответствует матлаб-эталону xx_locs = c_et + xb + corr_ind(chan).
+    Это НЕ позиция максимума STD-пика (TPeak.Position) и не начало шаблона,
+    а точка, где расположен сам разряд. }
   TEodEvent = record
-    Position: Int64;   // zero-based sample/frame in the original recording
+    Position: Int64;
     FishType: TFishType;
     Correlation: Single;
     Channel: Integer;  // zero-based

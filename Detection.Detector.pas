@@ -29,7 +29,8 @@ type
 implementation
 
 uses
-  System.SysUtils, System.Math, IO.AudioSource, Signal.Statistics, Signal.Fir15,
+  System.SysUtils, System.Math, System.Generics.Defaults, System.Generics.Collections,
+  IO.AudioSource, Signal.Statistics, Signal.Fir15,
   Signal.Peaks, Detection.Classifier;
 
 const
@@ -54,21 +55,65 @@ begin
   Result := Length(A);
 end;
 
-function FilterCloseEvents(const Input: TEodEventArray; Distance: Int64): TEodEventArray;
+{ Подавление близких событий. Из каждой группы событий, чьи позиции лежат в
+  пределах Distance друг от друга (от первого события группы), остаётся одно —
+  с максимальной корреляцией. Вход может быть не отсортирован по позиции,
+  поэтому перед группировкой события сортируются: Position — по возрастанию,
+  при равенстве позиций Correlation — по убыванию; так выбор победителя в
+  группе детерминирован даже после неустойчивой сортировки.
+
+  Это замена старой реализации, которая в порядке появления списка молча
+  оставляла ПЕРВОЕ событие, а матлаб-эталон (см. read_wav_4ch_last.m,
+  блок дедупликации) оставлял последний элемент пары и терял полностью
+  первый элемент списка и оба элемента близкой пары. Здесь из близкой группы
+  всегда остаётся ровно один кандидат — лучший по качеству классификации. }
+function DeduplicateEvents(const Input: TEodEventArray; Distance: Int64): TEodEventArray;
 var
-  I, N: Integer;
-  LastPos: Int64;
+  Events: TArray<TEodEvent>;
+  Comparer: IComparer<TEodEvent>;
+  J, K, GStart, N: Integer;
+  Best: TEodEvent;
 begin
   SetLength(Result, 0);
-  LastPos := Low(Int64);
-  for I := 0 to High(Input) do
-    if (I = 0) or (Input[I].Position - LastPos > Distance) then
+  N := Length(Input);
+  if N = 0 then Exit;
+
+  SetLength(Events, N);
+  for J := 0 to N - 1 do
+    Events[J] := Input[J];
+
+  Comparer := TComparer<TEodEvent>.Construct(
+    function(const A, B: TEodEvent): Integer
     begin
-      N := Length(Result);
-      SetLength(Result, N + 1);
-      Result[N] := Input[I];
-      LastPos := Input[I].Position;
+      if A.Position < B.Position then Exit(-1);
+      if A.Position > B.Position then Exit(1);
+      if A.Correlation > B.Correlation then Exit(-1);
+      if A.Correlation < B.Correlation then Exit(1);
+      Result := 0;
+    end);
+  TArray.Sort<TEodEvent>(Events, Comparer);
+
+  GStart := 0;
+  for J := 1 to N - 1 do
+  begin
+    if Events[J].Position - Events[GStart].Position > Distance then
+    begin
+      Best := Events[GStart];
+      for K := GStart + 1 to J - 1 do
+        if Events[K].Correlation > Best.Correlation then
+          Best := Events[K];
+      SetLength(Result, Length(Result) + 1);
+      Result[High(Result)] := Best;
+      GStart := J;
     end;
+  end;
+
+  Best := Events[GStart];
+  for K := GStart + 1 to N - 1 do
+    if Events[K].Correlation > Best.Correlation then
+      Best := Events[K];
+  SetLength(Result, Length(Result) + 1);
+  Result[High(Result)] := Best;
 end;
 
 constructor TEodDetector.Create(const AConfig: TEodDetectorConfig);
@@ -87,8 +132,8 @@ var
   FirInput: TFloatArray;
   AllFiltered: TFloatArray;
   LocalPeaks: TPeakArray;
-  Frame, N, I, Total: Int64;
-  DesiredStart, DesiredEnd: Int64;
+  Frame, N, I: Integer;
+  Total, DesiredStart, DesiredEnd: Int64;
   ReadStart, ReadCount: Int64;
   DestOffset, CoreIndex: Integer;
 begin
@@ -99,10 +144,18 @@ begin
     if (MaxFrames > 0) and (MaxFrames < Total) then
       Total := MaxFrames;
 
-    { This validation stage keeps the filtered signal in RAM so prominence is
-      calculated over the complete tested interval. A disk-backed cache will
-      replace this in the large-file stage. }
-    SetLength(AllFiltered, Total);
+    { Анализ пока целиком держит отфильтрованный сигнал в RAM (prominence
+      считается по всему интервалу; дисковый кэш — этап P1). Динамический
+      массив в Win32 адресуется через Integer, поэтому Total длиннее MaxInt
+      не поддерживается: вместо молчаливого переполнения Int64 -> Integer
+      (порча длины, отрицательный размер) пробрасываем понятную ошибку.
+      После этой проверки все сужения Int64 -> Integer ниже безопасны. }
+    if Total > MaxInt then
+      raise ERangeError.CreateFmt(
+        'Запись длиной %d кадров слишком велика для анализа в памяти ' +
+        '(лимит %d). Потоковая/чанковая обработка планируется (P1).',
+        [Total, MaxInt]);
+    SetLength(AllFiltered, Integer(Total));
 
     Fir := TFir15.Create;
     try
@@ -111,7 +164,7 @@ begin
       begin
         N := FConfig.ChunkSize;
         if Frame + N > Total then
-          N := Total - Frame;
+          N := Integer(Total - Frame);
 
         { Read Fir15HalfWidth samples on each side of the core block so
           FIR15 has the same neighbourhood it would have in one continuous
@@ -124,7 +177,7 @@ begin
         if ReadCount < 0 then
           ReadCount := 0;
 
-        SetLength(FirInput, Integer(N) + 2 * Fir15HalfWidth);
+        SetLength(FirInput, N + 2 * Fir15HalfWidth);
         for I := 0 to High(FirInput) do
           FirInput[I] := 0;
 
@@ -237,6 +290,14 @@ begin
       Peaks := AnalyzePeaks(File1, File2);
       WindowLength := FConfig.WindowBefore + FConfig.WindowAfter + 1;
 
+      { Правило классификации. Classify проверяет три шаблона независимо
+        (как corr_et.m в матлаб-эталоне) и может вернуть до трёх кандидатов
+        на один STD-пик — по одному на каждый тип рыбы, если корреляция
+        превысила порог. «Один кандидат на физическое событие» получается
+        ниже в DeduplicateEvents: из группы близких по позиции кандидатов
+        остаётся лучший по корреляции. Явный выбор «лучшего шаблона» в
+        классификаторе не делается намеренно — только когда в близкой окрестности
+        действительно несколько разрядов, они сохраняются все. }
       for Peak in Peaks do
       begin
         StartFrame := Peak.Position - FConfig.WindowBefore;
@@ -253,7 +314,7 @@ begin
         AppendEvents(Result, PeakResults);
       end;
 
-      Result := FilterCloseEvents(Result, FConfig.DuplicateDistance);
+      Result := DeduplicateEvents(Result, FConfig.DuplicateDistance);
     finally
       Classifier.Free;
     end;
