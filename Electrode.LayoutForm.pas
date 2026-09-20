@@ -180,6 +180,9 @@ type
 
 implementation
 
+uses
+  FMX.DialogService;
+
 { ------------------------------------------------------------------ }
 { Вспомогательные функции                                           }
 { ------------------------------------------------------------------ }
@@ -1066,25 +1069,36 @@ end;
 
 procedure TElectrodeLayoutForm.BtnClearAllClick(Sender: TObject);
 begin
-  if MessageDlg('Удалить всю текущую разметку (углы, все пары электродов и отметки рыбы)?',
-    TMsgDlgType.mtConfirmation, [TMsgDlgBtn.mbYes, TMsgDlgBtn.mbNo], 0) <> mrYes then
-    Exit;
+  TDialogService.MessageDialog(
+    'Удалить всю текущую разметку (углы, все пары электродов и отметки рыбы)?',
+    TMsgDlgType.mtConfirmation,
+    [TMsgDlgBtn.mbYes, TMsgDlgBtn.mbNo],
+    TMsgDlgBtn.mbNo, // Кнопка по умолчанию (фокус на "Нет" для безопасности)
+    0,
+    procedure(const AResult: TModalResult)
+    begin
+      // Если пользователь не нажал "Да" — просто ничего не делаем и выходим из колбэка
+      if AResult <> mrYes then
+        Exit;
 
-  ReadTankSizeFromEdits;
-  FLayout.TankCornersSet := 0;
-  FCornersPlaced := 0;
-  SetLength(FLayout.Pairs, 0);
-  SetLength(FLayout.FishMarks, 0);
-  FMode := limNone;
-  FHavePendingPairPoint := False;
-  FHavePendingFishHead := False;
-  FLastAction := laNone;
+      // Весь код очистки выполняется только при подтверждении
+      ReadTankSizeFromEdits;
+      FLayout.TankCornersSet := 0;
+      FCornersPlaced := 0;
+      SetLength(FLayout.Pairs, 0);
+      SetLength(FLayout.FishMarks, 0);
+      FMode := limNone;
+      FHavePendingPairPoint := False;
+      FHavePendingFishHead := False;
+      FLastAction := laNone;
 
-  ClearLocalizationResult;
-  ClearLiveState;
-  SyncChannelControls;
-  UpdateStatus;
-  FPaintBox.Repaint;
+      ClearLocalizationResult;
+      ClearLiveState;
+      SyncChannelControls;
+      UpdateStatus;
+      FPaintBox.Repaint;
+    end
+  );
 end;
 
 procedure TElectrodeLayoutForm.BtnExportJsonClick(Sender: TObject);

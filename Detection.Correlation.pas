@@ -46,7 +46,6 @@ var
   N, L, Pos, J: Integer;
   MeanT, SumE, SumE2, DenT, DenC, Dot, Corr: Double;
   SumT, SumT2: Double;
-  X: Double;
 begin
   Result.Correlation := 0;
   Result.Position := 0;

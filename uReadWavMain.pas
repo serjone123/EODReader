@@ -23,6 +23,7 @@ uses
 , Electrode.Matching
 , Electrode.LayoutForm
 , GUI.VideoExportForm
+, fmx.Dialogservice
  ;
 
 type
@@ -68,6 +69,7 @@ type
     procedure FNextButtonClick(Sender: TObject);
     procedure FOpenPeakButtonClick(Sender: TObject);
     procedure FOpenWavButtonClick(Sender: TObject);
+    procedure FinalizeOpenWav(const AFile1, AFile2: string);
     procedure FormCloseQuery(Sender: TObject; var CanClose: Boolean);
     procedure lbPeakListMouseDown(Sender: TObject; Button: TMouseButton;
       Shift: TShiftState; X, Y: Single);
@@ -694,23 +696,46 @@ begin
     Exit;
   end;
 
-  SecondsText := 'Analyze the whole WAV now?' + sLineBreak +
-    'The analysis will run in the background.' + sLineBreak +
-    'Press No to analyze the first 600 seconds only.';
+  // Текст сообщения переведен на русский язык
+  SecondsText := 'Анализировать весь WAV-файл целиком?' + sLineBreak +
+    'Анализ будет выполняться в фоновом режиме.' + sLineBreak +
+    'Нажмите «Нет», чтобы проанализировать только первые 600 секунд.';
 
-  if MessageDlg(SecondsText, TMsgDlgType.mtConfirmation,
-    [TMsgDlgBtn.mbYes, TMsgDlgBtn.mbNo], 0) = mrYes then
-    MaxFrames := 0
-  else
-  begin
-    MaxFrames := Int64(600) * FSession.SampleRate;
+  // Вызываем асинхронный диалог с тремя кнопками
+  TDialogService.MessageDialog(
+    SecondsText,
+    TMsgDlgType.mtConfirmation,
+    [TMsgDlgBtn.mbYes, TMsgDlgBtn.mbNo, TMsgDlgBtn.mbCancel], // Добавлена кнопка отмены
+    TMsgDlgBtn.mbYes, // Кнопка по умолчанию
+    0,
+    procedure(const AResult: TModalResult)
+    begin
+      // Проверяем выбор пользователя
+      case AResult of
+        mrYes:
+          begin
+            MaxFrames := 0;
+          end;
 
-    if MaxFrames > FSession.TotalFrames then
-      MaxFrames := FSession.TotalFrames;
-  end;
+        mrNo:
+          begin
+            MaxFrames := Int64(600) * FSession.SampleRate;
 
-  StartAnalysis(MaxFrames);
+            if MaxFrames > FSession.TotalFrames then
+              MaxFrames := FSession.TotalFrames;
+          end;
+
+        else
+          // Если нажата кнопка «Отмена» (mrCancel) или кнопка «Назад» на Android
+          Exit;
+      end;
+
+      // Запуск анализа происходит только для mrYes и mrNo
+      StartAnalysis(MaxFrames);
+    end
+  );
 end;
+
 
 procedure TMainForm.FApplyButtonClick(Sender: TObject);
 var
@@ -811,10 +836,26 @@ begin
   end;
 end;
 
+// Вспомогательный метод (или приватный метод формы), чтобы не дублировать код запуска
+procedure TMainForm.FinalizeOpenWav(const AFile1, AFile2: string);
+begin
+  FBackground.StartOpenWav(AFile1, AFile2);
+
+  SetAnalysisUiState(True);
+  FAnalyzeButton.Enabled := False;
+  FOpenPeakButton.Enabled := False;
+  FSaveButton.Enabled := False;
+  UpdateStatus('Opening WAV in background...');
+end;
+
 procedure TMainForm.FOpenWavButtonClick(Sender: TObject);
 var
   D: TOpenDialog;
-  File1, File2: string;
+  // Переносим переменные, которые должны "выжить" внутри колбэка
+  // Delphi автоматически захватит их в анонимный метод
+  CapturedFile1: string;
+  CapturedFile2: string;
+  MsgText: string;
 begin
   if FBackground.OpenRunning or FBackground.AnalysisRunning then
     Exit;
@@ -822,60 +863,77 @@ begin
   D := TOpenDialog.Create(Self);
   try
     D.Filter := 'WAV files (*.wav)|*.wav|All files (*.*)|*.*';
-    D.Title := 'Open Tr12 WAV';
+    D.Title := 'Открыть первый WAV';
     if FLastDir <> '' then
       D.InitialDir := FLastDir;
 
     if not D.Execute then
       Exit;
 
-    File1 := D.FileName;
-    FLastDir := ExtractFilePath(File1);
+    CapturedFile1 := D.FileName;
+    FLastDir := ExtractFilePath(CapturedFile1);
 
-    if TryGetPairedWavFileName(File1, File2) and FileExists(File2) then
+    // Сценарий 1: Парный файл найден автоматически
+    if TryGetPairedWavFileName(CapturedFile1, CapturedFile2) and FileExists(CapturedFile2) then
     begin
-      { Парный файл найден автоматически. }
+      FinalizeOpenWav(CapturedFile1, CapturedFile2);
+      Exit;
+    end;
+
+    // Формируем текст сообщения в зависимости от ситуации
+    if TryGetPairedWavFileName(CapturedFile1, CapturedFile2) then
+    begin
+      MsgText := 'Парный WAV не найден:' + sLineBreak +
+        CapturedFile2 + sLineBreak + sLineBreak +
+        'Выбрать второй WAV вручную?';
     end
     else
     begin
-      if TryGetPairedWavFileName(File1, File2) then
-      begin
-        if MessageDlg(
-          'Парный WAV не найден:' + sLineBreak +
-          File2 + sLineBreak + sLineBreak +
-          'Выбрать второй WAV вручную?',
-          TMsgDlgType.mtWarning,
-          [TMsgDlgBtn.mbYes, TMsgDlgBtn.mbNo], 0) <> mrYes then
-          Exit;
-      end
-      else
-      begin
-        if MessageDlg(
-          'Не удалось определить имя парного WAV.' + sLineBreak +
-          'Выбрать второй WAV вручную?',
-          TMsgDlgType.mtWarning,
-          [TMsgDlgBtn.mbYes, TMsgDlgBtn.mbNo], 0) <> mrYes then
-          Exit;
-      end;
-
-      D.Title := 'Open paired WAV';
-
-      if not D.Execute then
-        Exit;
-
-      File2 := D.FileName;
+      MsgText := 'Не удалось определить имя парного WAV.' + sLineBreak +
+        'Выбрать второй WAV вручную?';
     end;
+
   finally
+    // Уничтожаем диалог первого файла, так как управление передается в асинхронный поток
     D.Free;
   end;
 
-  FBackground.StartOpenWav(File1, File2);
+  // Сценарий 2: Парный файл НЕ найден, вызываем асинхронный диалог
+  TDialogService.MessageDialog(
+    MsgText,
+    TMsgDlgType.mtWarning,
+    [TMsgDlgBtn.mbYes, TMsgDlgBtn.mbNo],
+    TMsgDlgBtn.mbYes,
+    0,
+    procedure(const AResult: TModalResult)
+    var
+      SecondaryDialog: TOpenDialog;
+    begin
+      // Если пользователь отказался выбирать вручную — просто выходим
+      if AResult <> mrYes then
+        Exit;
 
-  SetAnalysisUiState(True);
-  FAnalyzeButton.Enabled := False;
-  FOpenPeakButton.Enabled := False;
-  FSaveButton.Enabled := False;
-  UpdateStatus('Opening WAV in background...');
+      // Пользователь согласился выбрать файл вручную
+      SecondaryDialog := TOpenDialog.Create(Self);
+      try
+        SecondaryDialog.Filter := 'WAV files (*.wav)|*.wav|All files (*.*)|*.*';
+        SecondaryDialog.Title := 'Открыть парный WAV';
+        if FLastDir <> '' then
+          SecondaryDialog.InitialDir := FLastDir;
+
+        // Если во втором диалоге нажали "Отмена" — выходим
+        if not SecondaryDialog.Execute then
+          Exit;
+
+        CapturedFile2 := SecondaryDialog.FileName;
+      finally
+        SecondaryDialog.Free;
+      end;
+
+      // Запускаем фоновый воркер
+      FinalizeOpenWav(CapturedFile1, CapturedFile2);
+    end
+  );
 end;
 
 procedure TMainForm.lbPeakListMouseDown(Sender: TObject; Button: TMouseButton;

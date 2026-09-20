@@ -235,20 +235,23 @@ end;
   следующего значимого токена (используется при простом ручном разборе). }
 procedure SkipWhitespace(const S: string; var Pos: Integer);
 begin
-  while (Pos <= Length(S)) and (S[Pos] in [' ', #9, #10, #13]) do
+  while (Pos <= Length(S)) and CharInSet(S[Pos], [' ', #9, #10, #13]) do
     Inc(Pos);
 end;
+
 
 function ParseJsonNumber(const S: string; var Pos: Integer): Double;
 var
   StartPos: Integer;
 begin
   StartPos := Pos;
-  while (Pos <= Length(S)) and (S[Pos] in ['0'..'9', '-', '+', '.', 'e', 'E']) do
+  // Заменяем оператор 'in' на функцию 'CharInSet'
+  while (Pos <= Length(S)) and CharInSet(S[Pos], ['0'..'9', '-', '+', '.', 'e', 'E']) do
     Inc(Pos);
-  Result := StrToFloatDef(Copy(S, StartPos, Pos - StartPos), 0,
-    JsonFS);
+
+  Result := StrToFloatDef(Copy(S, StartPos, Pos - StartPos), 0, JsonFS);
 end;
+
 
 { Находит позицию значения по ключу внутри плоского JSON-объекта.
   Возвращает позицию первого символа значения (сразу после ':'), или 0,
@@ -266,7 +269,7 @@ begin
   if NeedlePos = 0 then
     Exit;
   Result := NeedlePos + Length(Needle);
-  while (Result <= Length(S)) and (S[Result] in [' ', #9, #10, #13, ':']) do
+  while (Result <= Length(S)) and CharInSet(S[Result], [' ', #9, #10, #13, ':']) do
     Inc(Result);
 end;
 
