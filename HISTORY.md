@@ -20,6 +20,23 @@
 
 ## Записи
 
+### 2026-09-20 — Вынос показа пиков/диапазонов из формы в GUI.ViewController — Claude
+
+- Новый модуль `GUI.ViewController.pas` — класс `TEodViewController`: `ShowPeak`,
+  `ShowRange` (WAV / EODPK по режиму сессии), `NextPeak`/`PrevPeak`, состояние
+  текущего пика. Не владеет графиком, обзором и списком пиков (их создаёт форма);
+  диапазон и статус отдаёт колбэками `OnRangeChanged`/`OnStatus`; сессия и
+  детектор — свойства `Session`/`Detector`.
+- `uReadWavMain.pas`: удалены `ShowPeak`, `ShowRawPosition`, `ShowPeakFileRange`,
+  `UpdatePlotMode` и поля `FCurrentPeak/FCurrentStart/FCurrentCount`
+  (`FCurrentStart` нигде не читалось); повторяющийся `if Mode = dmWav ... else if
+  dmPeakFile` заменён на `FView.ShowRange`.
+- Изменение поведения: смена режима графика больше не применяет к виду
+  диапазон из полей ввода; в `ShowPeakFileRange` вид выставляется по
+  зажатому диапазону.
+- Расчёты и формат данных не менялись. Не собиралось (нет компилятора у
+  агента) — сборка и проверка за serjone.
+
 ### 2026-09-19 — P0-стабилизация детектора: семантика события, классификация, дедупликация, Int64, валидация WAV — opencode
 
 - Эталон — матлаб-скрипт `read_wav_4ch_last.m` + `corr_et.m` из `Doc/`

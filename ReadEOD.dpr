@@ -39,7 +39,8 @@ uses
   Video.FfmpegExport in 'Video.FfmpegExport.pas',
   Video.FfmpegLocate in 'Video.FfmpegLocate.pas',
   Video.OverlayRenderer in 'Video.OverlayRenderer.pas',
-  Threads.Base in 'Threads.Base.pas';
+  Threads.Base in 'Threads.Base.pas',
+  GUI.ViewController in 'GUI.ViewController.pas';
 
 {$R *.res}
 

@@ -16,6 +16,7 @@ uses
 , GUI.PeakList
 , GUI.Analysis
 , GUI.OverviewController
+, GUI.ViewController
 , Core.ConfigStore, GUI.SettingsForm
 , GUI.FileNaming
 , FMX.Menus
@@ -86,10 +87,9 @@ type
     FDetector: TEodDetector;
     FConfig: TEodDetectorConfig;
     FPlot: TSignalPlot;
+    FView: TEodViewController;
     FUpdating: Boolean;
-    FCurrentPeak: Integer;
-    FCurrentStart: Int64;
-    FCurrentCount: Integer;
+
     FBackground: TEodAnalysisController;
 
     FOverviewController: TEodOverviewController;
@@ -107,9 +107,6 @@ type
 
     procedure UpdateStatus(const S: string);
     procedure UpdateCaption;
-    procedure ShowPeak(Index: Integer);
-    procedure ShowRawPosition(AStartFrame, AEndFrame: Int64);
-    procedure ShowPeakFileRange(AStartFrame, AEndFrame: Int64);
     function CurrentFrame: Int64;
     function ReadInt64Edit(AEdit: TEdit; const ADefault: Int64): Int64;
     procedure SetRangeEdits(AStart, AEnd: Int64);
@@ -123,8 +120,8 @@ type
       Canceled: Boolean; const ErrorText: string);
     procedure SetAnalysisUiState(Analyzing: Boolean);
     procedure BackgroundCloseRequest(Sender: TObject);
-    procedure UpdatePlotMode;
     procedure PlotViewChanged(Sender: TObject; ViewStart, ViewEnd: Int64);
+    procedure ViewRangeChanged(AStart, AEnd: Int64);
   end;
 
 var
@@ -149,8 +146,6 @@ begin
     FConfig := DefaultEodDetectorConfig;
   FSession := TEodGuiSession.Create;
   FDetector := TEodDetector.Create(FConfig);
-
-  FCurrentPeak := -1;
 
   { Владелец фоновых воркеров (GUI.Analysis.pas). Реакция на прогресс и
     результаты остаётся здесь, в форме; контроллер лишь дергает события. }
@@ -200,13 +195,26 @@ begin
   FPeakList := TEodPeakList.Create(lbPeakList, FSession,
     procedure(Index: Integer)
     begin
-      ShowPeak(Index);
+      FView.ShowPeak(Index);
     end,
     procedure(const S: string)
     begin
       edEndSample.Text := S;
     end);
   FWheelAccumulator := 0;
+
+  { Показ пиков и диапазонов на основном графике (GUI.ViewController.pas).
+    Плеер создаётся ниже, поэтому «идёт ли воспроизведение» проверяется
+    в момент вызова, а не при создании. }
+  FView := TEodViewController.Create(FPlot, FSession, FDetector,
+    FOverviewController, FPeakList,
+    function: Boolean
+    begin
+      Result := Assigned(FPlayer) and FPlayer.Active;
+    end,
+    ViewRangeChanged,
+    UpdateStatus);
+  FView.PlotMode := TPlotMode(FModeBox.ItemIndex);
 
   { Код позиционного ползунка использует Value/1000, поэтому Max обязан
     быть 1000 (у FMX TTrackBar по умолчанию Max=10 — ползунок бы работал
@@ -230,7 +238,7 @@ begin
   FPlayer := TEodPlayer.Create(FSession,
     procedure(Index: Integer)
     begin
-      ShowPeak(Index);
+      FView.ShowPeak(Index);
     end,
     procedure(const S: string)
     begin
@@ -242,7 +250,7 @@ begin
     end,
     function: Integer
     begin
-      Result := FCurrentPeak;
+      Result := FView.CurrentPeak;
     end,
     procedure(P: Double)
     begin
@@ -262,8 +270,10 @@ begin
         FPlayButton.Text := 'Play';
         { Во время плея список не обновлялся — синхронизируем его один раз
           с последним показанным пиком. }
-        if (FCurrentPeak >= 0) and (FCurrentPeak < FSession.PeakCount) then
-          FPeakList.FillAroundFrame(FSession.GetPeakPosition(FCurrentPeak));
+        if (FView.CurrentPeak >= 0) and
+           (FView.CurrentPeak < FSession.PeakCount) then
+          FPeakList.FillAroundFrame(
+            FSession.GetPeakPosition(FView.CurrentPeak));
       end;
     end);
 
@@ -285,6 +295,9 @@ begin
   FOverviewController.CancelAll;
   FOverviewController.Free;
   FOverviewController := nil;
+
+  FView.Free;
+  FView := nil;
 
   FPlayer.Free;
   FPlayer := nil;
@@ -330,14 +343,14 @@ begin
   if Canceled then
   begin
     FSession.SetPeaks(nil);
-    FCurrentPeak := -1;
+    FView.CurrentPeak := -1;
     lbPeakList.Clear;
     UpdateStatus('Analysis cancelled.');
   end
   else if ErrorText <> '' then
   begin
     FSession.SetPeaks(nil);
-    FCurrentPeak := -1;
+    FView.CurrentPeak := -1;
     lbPeakList.Clear;
     UpdateStatus('Analysis error: ' + ErrorText);
   end
@@ -347,7 +360,7 @@ begin
     FPeakList.FillAroundFrame(FSession.GetPeakPosition(0));
 
     if Length(Peaks) > 0 then
-      ShowPeak(0);
+      FView.ShowPeak(0);
 
     UpdateStatus(Format('Analysis complete: %d peaks', [Length(Peaks)]));
   end;
@@ -439,9 +452,10 @@ begin
 
   OldSession := FSession;
   FSession := Session;
-  FPlayer.Session := FSession;
+  FView.Session := FSession;
   FPeakList.Session := FSession;
   FOverviewController.Session := FSession;
+  FPlayer.Session := FSession;
   if FSession.TotalFrames > 0 then
   begin
     { В режиме WAV под вид выделяется сырой буфер, поэтому максимальная
@@ -455,16 +469,14 @@ begin
   OldSession.Free;
 
   FSession.SetPeaks(nil);
-  FCurrentPeak := -1;
-  FCurrentStart := 0;
-  FCurrentCount := 201;
+  FView.Reset;
 
   FPeakList.FillFirstPage;
   SetAnalysisUiState(False);
 
   SetRangeEdits(0, 200);
 
-  ShowRawPosition(0, 200);
+  FView.ShowRange(0, 200);
 
   UpdateStatus(Format('WAV: %.3f sec, %d Hz, %d frames',
     [FSession.TotalFrames / FSession.SampleRate, FSession.SampleRate,
@@ -482,10 +494,7 @@ begin
 
   SetRangeEdits(ViewStart, ViewEnd);
 
-  if FSession.Mode = dmWav then
-    ShowRawPosition(ViewStart, ViewEnd)
-  else if FSession.Mode = dmPeakFile then
-    ShowPeakFileRange(ViewStart, ViewEnd);
+  FView.ShowRange(ViewStart, ViewEnd);
 end;
 
 procedure TMainForm.UpdateStatus(const S: string);
@@ -621,227 +630,6 @@ begin
   Handled := True;
 end;
 
-procedure TMainForm.ShowPeak(Index: Integer);
-var
-  Peak: TPeak;
-  StartFrame: Int64;
-  Data: TAudioChunk;
-  Std: TFloatArray;
-  Fir: TFloatArray;
-  Range: Integer;
-begin
-  if (Index < 0) or (Index >= FSession.PeakCount) then
-    Exit;
-
-  { Убран ручной ItemIndex — теперь делает TEodPeakList.FillAroundFrame }
-
-  if FSession.Mode = dmPeakFile then
-    Data := FSession.ReadPeak(Index, Peak, StartFrame)
-  else
-  begin
-    if not FSession.GetPeak(Index, Peak) then
-      Exit;
-    Range := 30;
-    StartFrame := Peak.Position - Range;
-    Data := FSession.ReadSegment(StartFrame, Range * 2 + 1, True);
-  end;
-
-  FCurrentStart := StartFrame;
-  FCurrentCount := Length(Data);
-
-  SetRangeEdits(StartFrame, StartFrame + Length(Data) - 1);
-
-  FCurrentPeak := Index;
-
-  Std := FSession.CalculateStd(Data);
-  Fir := FDetector.ApplyFir15(Std);
-
-  FPlot.SetChannels(Data, StartFrame, FSession.SampleRate, Peak.Position,
-    Format('Peak #%d  sample %d', [Index + 1, Peak.Position]));
-
-  FPlot.SetStd(Std, StartFrame, FSession.SampleRate, Peak.Position,
-    'STD around peak');
-
-  FPlot.SetFir(Fir, StartFrame, FSession.SampleRate, Peak.Position,
-    'FIR15 around peak');
-
-  UpdatePlotMode;
-
-  FPlot.SetViewRange(StartFrame, StartFrame + Length(Data) - 1);
-
-  { Синхронизируем красный прямоугольник выделения на обзорном графике
-    с новым диапазоном отображения. SetViewRange не вызывает OnViewChanged,
-    поэтому обновляем обзор вручную. }
-  FOverviewController.SetViewRange(StartFrame, StartFrame + Length(Data) - 1);
-
-  UpdateStatus(Format('Peak %d/%d: sample %d, time %.6f s, prominence %.6f',
-    [Index + 1, FSession.PeakCount, Peak.Position,
-    Peak.Position / FSession.SampleRate, Peak.Prominence]));
-
-  { Перезаполняем ListBox только если нужно, иначе просто подсвечиваем.
-    Во время воспроизведения список не трогаем: обновление на каждый пик
-    тормозит плей; при остановке список синхронизируется один раз
-    (колбэк состояния плеера в FormCreate). }
-  if not FPlayer.Active then
-    FPeakList.FillAroundFrame(Peak.Position);
-end;
-
-procedure TMainForm.ShowPeakFileRange(AStartFrame, AEndFrame: Int64);
-const
-  RawLimit = 10000;
-  MaxEnvelopePoints = 4096;
-var
-  StartFrame, EndFrame: Int64;
-  Envelope: TWaveEnvelope;
-  Data: TAudioChunk;
-  Std: TFloatArray;
-  Fir: TFloatArray;
-begin
-  if FSession.Mode <> dmPeakFile then
-    Exit;
-
-  if FSession.TotalFrames <= 0 then
-    Exit;
-
-  StartFrame := EnsureRange(AStartFrame, Int64(0), FSession.TotalFrames - 1);
-  EndFrame := EnsureRange(AEndFrame, StartFrame, FSession.TotalFrames - 1);
-
-  { ------------------------------------------------------------ }
-  { Малый диапазон с небольшим числом окон пиков: точный вид       }
-  { сигнала. Граница RawLimit — политика GUI, не формата.          }
-  { ------------------------------------------------------------ }
-
-  if FSession.TryReadPeakFileRawRange(StartFrame, EndFrame,
-    RawLimit, RawLimit, Data) then
-  begin
-    FPlot.SetChannels(Data, StartFrame, FSession.SampleRate, -1,
-      Format('Samples %d .. %d', [StartFrame, EndFrame]));
-
-    Std := FSession.CalculateStd(Data);
-    Fir := FDetector.ApplyFir15(Std);
-
-    FPlot.SetStd(Std, StartFrame, FSession.SampleRate, -1, 'STD');
-    FPlot.SetFir(Fir, StartFrame, FSession.SampleRate, -1, 'FIR15');
-
-    FPlot.SetSelectedPosition(StartFrame);
-    FPlot.SetViewRange(StartFrame, EndFrame);
-    FPlot.SetHistogramRange(StartFrame, EndFrame);
-
-    UpdatePlotMode;
-    Exit;
-  end;
-
-  { ------------------------------------------------------------ }
-  { Большой диапазон: TAudioChunk под диапазон НЕ создаём никогда. }
-  { ------------------------------------------------------------ }
-
-  if not FSession.ReadPeakEnvelope(StartFrame, EndFrame, MaxEnvelopePoints,
-    Envelope) then
-  begin
-    FPlot.ClearData;
-    Exit;
-  end;
-
-  FPlot.SetEnvelope(Envelope, StartFrame, EndFrame, FSession.SampleRate,
-    Format('EODPK envelope %d .. %d', [StartFrame, EndFrame]));
-
-  FPlot.SetSelectedPosition(StartFrame);
-  FPlot.SetViewRange(StartFrame, EndFrame);
-  FPlot.SetHistogramRange(StartFrame, EndFrame);
-
-  { STD/FIR здесь бессмысленны без восстановления сырого сигнала. }
-  FPlot.SetStd(nil, StartFrame, FSession.SampleRate, -1, 'STD');
-  FPlot.SetFir(nil, StartFrame, FSession.SampleRate, -1, 'FIR15');
-
-  UpdatePlotMode;
-
-  UpdateStatus(Format(
-    'EODPK envelope %d .. %d  (%d samples, %d display buckets)',
-    [StartFrame, EndFrame, EndFrame - StartFrame + 1, Length(Envelope)]));
-end;
-
-procedure TMainForm.ShowRawPosition(AStartFrame, AEndFrame: Int64);
-var
-  StartFrame, EndFrame: Int64;
-  Data: TAudioChunk;
-  Std: TFloatArray;
-  Fir: TFloatArray;
-  PeakPositions: TArray<Int64>;
-  FirstIdx, LastIdx: Int64;
-  I, N: Integer;
-  CountText: string;
-begin
-  if FSession.Mode <> dmWav then
-    Exit;
-
-  if FSession.TotalFrames <= 0 then
-    Exit;
-
-  StartFrame := EnsureRange(AStartFrame, Int64(0), FSession.TotalFrames - 1);
-  EndFrame := EnsureRange(AEndFrame, StartFrame, FSession.TotalFrames - 1);
-
-  Data := FSession.ReadSegment(StartFrame, EndFrame - StartFrame + 1, True);
-
-  FCurrentStart := StartFrame;
-  FCurrentCount := Length(Data);
-
-  Std := FSession.CalculateStd(Data);
-  Fir := FDetector.ApplyFir15(Std);
-
-  FPlot.SetChannels(Data, StartFrame, FSession.SampleRate, -1,
-    Format('Samples %d .. %d', [StartFrame, EndFrame]));
-
-  FPlot.SetStd(Std, StartFrame, FSession.SampleRate, -1, 'STD');
-
-  FPlot.SetFir(Fir, StartFrame, FSession.SampleRate, -1, 'FIR15');
-
-  { Пики в диапазоне — бинарным поиском, а не двумя проходами по всем
-    пикам записи (метод вызывается на каждый шаг зума/панорамы). }
-  N := 0;
-  SetLength(PeakPositions, 0);
-  if FSession.FindPeakRangeIndices(StartFrame, EndFrame, 0, FirstIdx, LastIdx) then
-  begin
-    N := Integer(LastIdx - FirstIdx + 1);
-    SetLength(PeakPositions, N);
-    for I := 0 to N - 1 do
-      PeakPositions[I] := FSession.GetPeakPosition(Integer(FirstIdx) + I);
-  end;
-
-  FPlot.SetPeakPositions(PeakPositions);
-  FPlot.SetSelectedPosition(StartFrame);
-  FPlot.SetViewRange(StartFrame, EndFrame);
-  FPlot.SetHistogramRange(StartFrame, EndFrame);
-
-  SetRangeEdits(StartFrame, EndFrame);
-
-  if N <= 1000 then
-    CountText := Format('; %d peaks in selection', [N])
-  else
-    CountText := Format('; >1000 peaks in selection (%d, not listed)', [N]);
-
-  UpdateStatus(Format('Samples %d .. %d  (%d samples, %.6f s .. %.6f s)%s',
-    [StartFrame, EndFrame, Length(Data), StartFrame / FSession.SampleRate,
-    EndFrame / FSession.SampleRate, CountText]));
-
-  UpdatePlotMode;
-end;
-
-procedure TMainForm.UpdatePlotMode;
-var
-  StartFrame, EndFrame: Int64;
-begin
-  if not Assigned(FPlot) then
-    Exit;
-
-  FPlot.SetMode(TPlotMode(FModeBox.ItemIndex));
-
-  StartFrame := ReadInt64Edit(edStartSample, 0);
-  EndFrame := ReadInt64Edit(edEndSample, StartFrame);
-  if EndFrame < StartFrame then
-    EndFrame := StartFrame;
-  FPlot.SetViewRange(StartFrame, EndFrame);
-end;
-
 procedure TMainForm.StartAnalysis(MaxFrames: Int64);
 begin
   if FBackground.AnalysisRunning then
@@ -849,7 +637,7 @@ begin
 
   lbPeakList.Clear;
   FSession.SetPeaks(nil);
-  FCurrentPeak := -1;
+  FView.CurrentPeak := -1;
 
   SetAnalysisUiState(True);
   UpdateStatus('Starting analysis...');
@@ -898,34 +686,22 @@ begin
 end;
 
 procedure TMainForm.FApplyButtonClick(Sender: TObject);
+var
+  S: Int64;
 begin
-  if FSession.Mode = dmPeakFile then
-  begin
-    ShowPeakFileRange(ReadInt64Edit(edStartSample, 0),
-      ReadInt64Edit(edEndSample, ReadInt64Edit(edStartSample, 0)));
-    Exit;
-  end;
-
-  ShowRawPosition(ReadInt64Edit(edStartSample, 0), ReadInt64Edit(edEndSample,
-    ReadInt64Edit(edStartSample, 0)));
+  S := ReadInt64Edit(edStartSample, 0);
+  FView.ShowRange(S, ReadInt64Edit(edEndSample, S));
 end;
 
 procedure TMainForm.FModeBoxChange(Sender: TObject);
 begin
-  UpdatePlotMode;
+  if Assigned(FView) and (FModeBox.ItemIndex >= 0) then
+    FView.PlotMode := TPlotMode(FModeBox.ItemIndex);
 end;
 
 procedure TMainForm.FNextButtonClick(Sender: TObject);
 begin
-  if FSession.PeakCount = 0 then
-    Exit;
-
-  if FCurrentPeak < FSession.PeakCount - 1 then
-    Inc(FCurrentPeak)
-  else
-    FCurrentPeak := FSession.PeakCount - 1;
-
-  ShowPeak(FCurrentPeak);
+  FView.NextPeak;
 end;
 
 { ================================================================== }
@@ -979,7 +755,7 @@ begin
     FOverviewController.StartPeakOverview(D.FileName,
       cbBucketModeBox.ItemIndex = 0);
 
-    FCurrentPeak := -1;
+    FView.CurrentPeak := -1;
 
     FPeakList.FillFirstPage;
 
@@ -992,7 +768,7 @@ begin
       if EndFrame >= FSession.TotalFrames then
         EndFrame := FSession.TotalFrames - 1;
       SetRangeEdits(StartFrame, EndFrame);
-      ShowPeakFileRange(StartFrame, EndFrame);
+      FView.ShowRange(StartFrame, EndFrame);
 
     end
     else
@@ -1104,29 +880,18 @@ begin
 
   ViewW := FPlot.ViewSampleCount;
   if ViewW <= 0 then
-    ViewW := FCurrentCount;
+    ViewW := FView.CurrentCount;
   if ViewW <= 0 then
     ViewW := 200;
 
   SetRangeEdits(Frame, Frame + ViewW - 1);
 
-  if FSession.Mode = dmWav then
-    ShowRawPosition(Frame, Frame + ViewW - 1)
-  else if FSession.Mode = dmPeakFile then
-    ShowPeakFileRange(Frame, Frame + ViewW - 1);
+  FView.ShowRange(Frame, Frame + ViewW - 1);
 end;
 
 procedure TMainForm.FPrevButtonClick(Sender: TObject);
 begin
-  if FSession.PeakCount = 0 then
-    Exit;
-
-  if FCurrentPeak > 0 then
-    Dec(FCurrentPeak)
-  else
-    FCurrentPeak := 0;
-
-  ShowPeak(FCurrentPeak);
+  FView.PrevPeak;
 end;
 
 procedure TMainForm.FSaveButtonClick(Sender: TObject);
@@ -1215,7 +980,7 @@ begin
 
   ViewWidth := FPlot.ViewSampleCount;
   if ViewWidth <= 0 then
-    ViewWidth := FCurrentCount;
+    ViewWidth := FView.CurrentCount;
   if ViewWidth <= 0 then
     ViewWidth := 201;
 
@@ -1237,10 +1002,7 @@ begin
 
   SetRangeEdits(NewStart, NewEnd);
 
-  if FSession.Mode = dmWav then
-    ShowRawPosition(NewStart, NewEnd)
-  else if FSession.Mode = dmPeakFile then
-    ShowPeakFileRange(NewStart, NewEnd);
+  FView.ShowRange(NewStart, NewEnd);
 
   { <<< FIX: восстановление рабочего диапазона отображения >>> }
   FPlot.GetViewRange(NewStart, NewEnd);
@@ -1266,10 +1028,7 @@ begin
 
   SetRangeEdits(AStart, AEnd);
 
-  if FSession.Mode = dmWav then
-    ShowRawPosition(AStart, AEnd)
-  else if FSession.Mode = dmPeakFile then
-    ShowPeakFileRange(AStart, AEnd);
+  FView.ShowRange(AStart, AEnd);
 
   FPlot.GetViewRange(ViewStart, ViewEnd);
   FOverviewController.SetViewRange(ViewStart, ViewEnd);
@@ -1294,6 +1053,8 @@ begin
 
       FDetector.Free;
       FDetector := TEodDetector.Create(FConfig);
+
+      FView.Detector := FDetector;
 
       SaveDetectorConfig(GetDefaultConfigFileName, FConfig);
       UpdateStatus('Settings saved to ' + GetDefaultConfigFileName);
@@ -1356,6 +1117,11 @@ end;
 procedure TMainForm.lbPeakListClick(Sender: TObject);
 begin
   FPeakList.HandleClick;
+end;
+
+procedure TMainForm.ViewRangeChanged(AStart, AEnd: Int64);
+begin
+  SetRangeEdits(AStart, AEnd);
 end;
 
 end.

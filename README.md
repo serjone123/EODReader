@@ -160,7 +160,7 @@ Cache level 0 … N
 | Юнит | Назначение |
 |---|---|
 | `ReadEOD.dpr` | Точка входа, список всех юнитов. |
-| `uReadWavMain.pas` + `.fmx` | Главная форма TMainForm: сборка UI, навигация, показ пиков/диапазонов; воспроизведение и список пиков вынесены в GUI.Playback/GUI.PeakList |
+| `uReadWavMain.pas — «Главная форма TMainForm: сборка UI, поля ввода диапазона, обработчики кнопок; показ данных — в GUI.ViewController, воспроизведение — в GUI.Playback, список пиков — в GUI.PeakList» |
 | `GUI.Model.pas` | `TEodGuiSession` — сессия поверх WAV-пары (`dmWav`) или `.eodpk` (`dmPeakFile`); единый API чтения сегментов/пиков для GUI. |
 | `GUI.Playback.pas` | TEodPlayer, воспроизведение как последовательность пиков |
 | `GUI.PeakList.pas` | TEodPeakList, страницы списка пиков и ссылки <</>> |
@@ -169,6 +169,7 @@ Cache level 0 … N
 | `GUI.Plot.Overview.pas` | `TOverviewPlot` (обзорный график). |
 | `GUI.Analysis.pas` | `TEodAnalysisController` — владеет фоновыми воркерами анализа и открытия WAV (`Threads.Analysis`, `Threads.WavOpen`). |
 | `GUI.OverviewController.pas` | `TEodOverviewController` — владеет обзорным графиком, огибающей и воркерами обзора WAV/EODPK (`Threads.Overview`, `Threads.PeakOverview`); статус — колбэком `OnStatus`, клики/выделения — событиями `OnClick`/`OnRangeSelected`. |
+| `GUI.ViewController.pas — TEodViewController: показ пика/диапазона на основном графике (WAV — сырой вид, .eodpk — сырой вид или огибающая), текущий пик, Prev/Next. |
 | `IO.PeakStore.pas` | Формат `.eodpk` v3: чтение/запись записей пиков, страницы, многоуровневый кэш огибающей. |
 | `Signal.Peaks.pas` | `FindPeaksProminence` — O(N) поиск пиков по prominence. |
 | `Detection.Detector.pas` | `TEodDetector` — конвейер анализа (`AnalyzePeaks`), прогресс/отмена. |

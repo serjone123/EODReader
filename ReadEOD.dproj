@@ -263,6 +263,7 @@
         <DCCReference Include="Video.FfmpegLocate.pas"/>
         <DCCReference Include="Video.OverlayRenderer.pas"/>
         <DCCReference Include="Threads.Base.pas"/>
+        <DCCReference Include="GUI.ViewController.pas"/>
         <None Include="TODO.md"/>
         <None Include="AGENTS.md"/>
         <None Include="HISTORY.md"/>
