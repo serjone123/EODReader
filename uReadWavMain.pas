@@ -769,7 +769,7 @@ begin
         EndFrame := FSession.TotalFrames - 1;
       SetRangeEdits(StartFrame, EndFrame);
       FView.ShowRange(StartFrame, EndFrame);
-
+      FOverviewController.SetViewRange(StartFrame, EndFrame);
     end
     else
     begin
@@ -1110,8 +1110,7 @@ begin
 { Режим бакетов применяется при построении обзора EODPK, поэтому
     строим заново (для EODPK это быстрое чтение кэша). }
   if FSession.Mode = dmPeakFile then
-    FOverviewController.StartPeakOverview(FSession.PeakFile,
-      cbBucketModeBox.ItemIndex = 0);
+    FOverviewController.StartPeakOverview(FSession.PeakFile, cbBucketModeBox.ItemIndex = 0);
 end;
 
 procedure TMainForm.lbPeakListClick(Sender: TObject);

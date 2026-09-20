@@ -32,6 +32,8 @@ type
     FViewWidthFunc: TFunc<Int64>;
     FOverview: TOverviewPlot;
 
+    FViewStart, FViewEnd: Int64;
+
     FOverviewThread: TEodOverviewThread;
     FPeakOverviewThread: TEodPeakOverviewThread;
     FClosing: Boolean;
@@ -408,7 +410,6 @@ procedure TEodOverviewController.PeakOverviewFinished(Sender: TObject;
   const ErrorText: string);
 var
   I: Integer;
-  InitialWidth: Int64;
 begin
   if FClosing then
     Exit;
@@ -448,13 +449,7 @@ begin
       0,
       TotalFrames - 1);
 
-    InitialWidth := 0;
-    if Assigned(FViewWidthFunc) then
-      InitialWidth := FViewWidthFunc();
-
-    FOverview.SetViewRange(
-      0,
-      Min(TotalFrames - 1, InitialWidth));
+    FOverview.SetViewRange(FViewStart, FViewEnd);
   end;
 
   ApplyOverviewLook;
@@ -467,6 +462,9 @@ end;
 
 procedure TEodOverviewController.SetViewRange(AViewStart, AViewEnd: Int64);
 begin
+  FViewStart := AViewStart;
+  FViewEnd := AViewEnd;
+
   if not Assigned(FOverview) then
     Exit;
 
