@@ -1,15 +1,15 @@
 unit GUI.ViewController;
 
-{ Показ данных на основном графике: один пик, произвольный диапазон WAV,
-  диапазон из .eodpk (сырой вид или огибающая). Вынесено из TMainForm.
+{ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ: пїЅпїЅпїЅпїЅ пїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ WAV,
+  пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ .eodpk (пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ). пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ TMainForm.
 
-  Класс не владеет ни одним объектом, которые ему переданы (график,
-  контроллер обзора, список пиков): их создаёт и освобождает форма.
-  Сессия и детектор в форме подменяются (открытие WAV, смена настроек),
-  поэтому они задаются свойствами Session и Detector.
+  пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅпїЅпїЅпїЅ,
+  пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ): пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ.
+  пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ WAV, пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ),
+  пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ Session пїЅ Detector.
 
-  Форма получает от класса два уведомления: показанный диапазон
-  (OnRangeChanged — для полей ввода) и текст статуса (OnStatus). }
+  пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ: пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+  (OnRangeChanged пїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ) пїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ (OnStatus). }
 
 interface
 
@@ -34,31 +34,32 @@ type
     FOnStatus: TEodViewStatusEvent;
 
     FPlotMode: TPlotMode;
-    FCurrentPeak: Integer;   // индекс показанного пика, -1 — пик не выбран
-    FCurrentCount: Integer;  // число кадров в последнем показанном диапазоне
+    FCurrentPeak: Integer;   // пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ, -1 пїЅ пїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
+    FCurrentCount: Integer;  // пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 
     procedure Status(const S: string);
     procedure RangeChanged(AStart, AEnd: Int64);
     function Playing: Boolean;
     procedure SetPlotMode(AValue: TPlotMode);
-    procedure ShowRawPosition(AStartFrame, AEndFrame: Int64);
+procedure ShowRawPosition(AStartFrame, AEndFrame: Int64);
     procedure ShowPeakFileRange(AStartFrame, AEndFrame: Int64);
+    procedure UpdateCurrentPeakForView(AStartFrame: Int64);
   public
     constructor Create(APlot: TSignalPlot; ASession: TEodGuiSession;
       ADetector: TEodDetector; AOverview: TEodOverviewController;
       APeakList: TEodPeakList; const AIsPlaying: TFunc<Boolean>;
       AOnRangeChanged: TEodViewRangeEvent; AOnStatus: TEodViewStatusEvent);
 
-    { Показ пика по индексу (окно вокруг пика). }
+    { пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ). }
     procedure ShowPeak(Index: Integer);
     procedure NextPeak;
     procedure PrevPeak;
 
-    { Показ произвольного диапазона; вид (WAV / EODPK) выбирается по
-      режиму сессии. В режиме dmNone ничего не делает. }
+    { пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ; пїЅпїЅпїЅ (WAV / EODPK) пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ
+      пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ. пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ dmNone пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ. }
     procedure ShowRange(AStart, AEnd: Int64);
 
-    { Сброс состояния при открытии новой записи. }
+    { пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ. }
     procedure Reset;
 
     property Session: TEodGuiSession read FSession write FSession;
@@ -93,6 +94,52 @@ procedure TEodViewController.Reset;
 begin
   FCurrentPeak := -1;
   FCurrentCount := 201;
+end;
+
+{ РљРѕРіРґР° РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ РІСЂСѓС‡РЅСѓСЋ РґРІРёРіР°РµС‚ В«РєСѓСЂСЃРѕСЂВ» (РїРѕР»Р·СѓРЅРѕРє РїРѕР·РёС†РёРё, РєР»РёРє РЅР°
+  РѕР±Р·РѕСЂРµ, РґРёР°РїР°Р·РѕРЅ) РїСЂРё РѕСЃС‚Р°РЅРѕРІР»РµРЅРЅРѕРј РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёРё, С‚РµРєСѓС‰РёР№ РїРёРє РЅСѓР¶РЅРѕ
+  РїРѕРґСЃС‚СЂРѕРёС‚СЊ РїРѕРґ РЅР°С‡Р°Р»Рѕ РІРёРґРёРјРѕР№ РѕР±Р»Р°СЃС‚Рё. РРЅР°С‡Рµ РїРѕРІС‚РѕСЂРЅС‹Р№ Play СЃС‚Р°СЂС‚СѓРµС‚ СЃ
+  РїРѕСЃР»РµРґРЅРµРіРѕ РџРћРљРђР—РђРќРќРћР“Рћ РїРёРєР° (С‚.Рµ. СЃ РјРµСЃС‚Р°, РіРґРµ РІРѕСЃРїСЂРѕРёР·РІРµРґРµРЅРёРµ Р±С‹Р»Рѕ
+  РѕСЃС‚Р°РЅРѕРІР»РµРЅРѕ), Р° РЅРµ СЃ С‚РѕРіРѕ РјРµСЃС‚Р°, РіРґРµ СЃС‚РѕРёС‚ РєСѓСЂСЃРѕСЂ. Р’Рѕ РІСЂРµРјСЏ PLAY РЅРµ
+  С‚СЂРѕРіР°РµРј: РїРёРє РІРµРґС‘С‚ СЃР°Рј РїР»РµРµСЂ. }
+procedure TEodViewController.UpdateCurrentPeakForView(AStartFrame: Int64);
+var
+  FirstIdx, LastIdx: Int64;
+  AfterIdx, BeforeIdx: Integer;
+  PA, PB: Int64;
+begin
+  if Playing then
+    Exit;
+  FCurrentPeak := -1;
+  if FSession.PeakCount = 0 then
+    Exit;
+
+  { РџРµСЂРІС‹Р№ РїРёРє СЃ РїРѕР·РёС†РёРµР№ >= AStartFrame; РєРѕРЅРµС† РїРѕРёСЃРєР° - РїРѕСЃР»РµРґРЅРёР№ СЃСЌРјРїР». }
+  AfterIdx := -1;
+  if FSession.FindPeakRangeIndices(AStartFrame, FSession.TotalFrames - 1, 0,
+    FirstIdx, LastIdx) then
+    AfterIdx := Integer(FirstIdx);
+
+  if AfterIdx < 0 then
+  begin
+    { РћС‚ РєСѓСЂСЃРѕСЂР° Рё РґРѕ РєРѕРЅС†Р° РїРёРєРѕРІ СѓР¶Рµ РЅРµС‚ вЂ” Р±РµСЂС‘Рј РїРѕСЃР»РµРґРЅРёР№ РїРёРє. }
+    FCurrentPeak := FSession.PeakCount - 1;
+    Exit;
+  end;
+
+  { Р‘РµСЂС‘Рј Р±Р»РёР¶Р°Р№С€РёР№ Рє РєСѓСЂСЃРѕСЂСѓ РїРёРє РёР· В«СЃР»РµРґСѓСЋС‰РµРіРѕВ» Рё В«РїСЂРµРґС‹РґСѓС‰РµРіРѕВ». }
+  BeforeIdx := AfterIdx - 1;
+  if BeforeIdx >= 0 then
+  begin
+    PA := FSession.GetPeakPosition(AfterIdx);
+    PB := FSession.GetPeakPosition(BeforeIdx);
+    if Abs(AStartFrame - PB) <= Abs(PA - AStartFrame) then
+      FCurrentPeak := BeforeIdx
+    else
+      FCurrentPeak := AfterIdx;
+  end
+  else
+    FCurrentPeak := AfterIdx;
 end;
 
 procedure TEodViewController.Status(const S: string);
@@ -196,18 +243,18 @@ begin
   FPlot.SetMode(FPlotMode);
   FPlot.SetViewRange(StartFrame, EndFrame);
 
-  { Синхронизируем красный прямоугольник выделения на обзорном графике
-    с новым диапазоном отображения. SetViewRange не вызывает OnViewChanged,
-    поэтому обновляем обзор вручную. }
+  { пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+    пїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ. SetViewRange пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ OnViewChanged,
+    пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ. }
   FOverview.SetViewRange(StartFrame, EndFrame);
 
   Status(Format('Peak %d/%d: sample %d, time %.6f s, prominence %.6f',
     [Index + 1, FSession.PeakCount, Peak.Position,
     Peak.Position / FSession.SampleRate, Peak.Prominence]));
 
-  { Во время воспроизведения список не трогаем: обновление на каждый пик
-    тормозит плей; при остановке список синхронизируется один раз
-    (колбэк состояния плеера в форме). }
+  { пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ: пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ
+    пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ; пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅ
+    (пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅ). }
   if not Playing then
     FPeakList.FillAroundFrame(Peak.Position);
 end;
@@ -246,8 +293,8 @@ begin
 
   FPlot.SetFir(Fir, StartFrame, FSession.SampleRate, -1, 'FIR15');
 
-  { Пики в диапазоне — бинарным поиском, а не проходом по всем пикам
-    записи (метод вызывается на каждый шаг зума/панорамы). }
+  { пїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
+    пїЅпїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ/пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ). }
   N := 0;
   SetLength(PeakPositions, 0);
   if FSession.FindPeakRangeIndices(StartFrame, EndFrame, 0, FirstIdx, LastIdx) then
@@ -263,7 +310,8 @@ begin
   FPlot.SetViewRange(StartFrame, EndFrame);
   FPlot.SetHistogramRange(StartFrame, EndFrame);
 
-  RangeChanged(StartFrame, EndFrame);
+RangeChanged(StartFrame, EndFrame);
+  UpdateCurrentPeakForView(StartFrame);
 
   if N <= 1000 then
     CountText := Format('; %d peaks in selection', [N])
@@ -294,11 +342,13 @@ begin
   if FSession.TotalFrames <= 0 then
     Exit;
 
-  StartFrame := EnsureRange(AStartFrame, Int64(0), FSession.TotalFrames - 1);
+StartFrame := EnsureRange(AStartFrame, Int64(0), FSession.TotalFrames - 1);
   EndFrame := EnsureRange(AEndFrame, StartFrame, FSession.TotalFrames - 1);
 
-  { Малый диапазон с небольшим числом окон пиков: точный вид сигнала.
-    Граница RawLimit — политика GUI, не формата. }
+  UpdateCurrentPeakForView(StartFrame);
+
+  { пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ: пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ.
+    пїЅпїЅпїЅпїЅпїЅпїЅпїЅ RawLimit пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ GUI, пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ. }
   if FSession.TryReadPeakFileRawRange(StartFrame, EndFrame,
     RawLimit, RawLimit, Data) then
   begin
@@ -319,7 +369,7 @@ begin
     Exit;
   end;
 
-  { Большой диапазон: TAudioChunk под диапазон НЕ создаём никогда. }
+  { пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ: TAudioChunk пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ. }
   if not FSession.ReadPeakEnvelope(StartFrame, EndFrame, MaxEnvelopePoints,
     Envelope) then
   begin
@@ -334,7 +384,7 @@ begin
   FPlot.SetViewRange(StartFrame, EndFrame);
   FPlot.SetHistogramRange(StartFrame, EndFrame);
 
-  { STD/FIR здесь бессмысленны без восстановления сырого сигнала. }
+  { STD/FIR пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ. }
   FPlot.SetStd(nil, StartFrame, FSession.SampleRate, -1, 'STD');
   FPlot.SetFir(nil, StartFrame, FSession.SampleRate, -1, 'FIR15');
 

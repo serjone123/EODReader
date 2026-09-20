@@ -96,6 +96,18 @@ type
     property Electrodes: TElectrodeLayout read FElectrodes write FElectrodes;
   end;
 
+{ Вклад одного электрода в потенциал в точке P: 1/dist(p, e)^n. MinDist
+  защищает от деления на (около)ноль. Экспортирован, чтобы форма разметки
+  могла рисовать «линии распространения тока» и показывать, какой
+  электрод сильнее всего «видит» рыбу. }
+function FieldContributionValue(const P, Electrode: TPoint2D;
+  ExponentN: Double): Double;
+
+{ Прогноз дифференциального канала в точке P: A*(вклад Plus - вклад
+  Minus). Экспортирован для визуализации поля (см. FieldContributionValue). }
+function PredictChannelValue(const P: TPoint2D; A: Double;
+  const Pair: TElectrodePair; ExponentN: Double): Double;
+
 implementation
 
 function Dist(const A, B: TPoint2D): Double;
@@ -106,7 +118,7 @@ end;
 { Вклад одного электрода в потенциал в точке P. MinDist защищает от
   деления на (около)ноль, если источник оказался вплотную к электроду -
   такое возможно только у самой стенки аквариума. }
-function FieldContribution(const P, Electrode: TPoint2D;
+function FieldContributionValue(const P, Electrode: TPoint2D;
   ExponentN: Double): Double;
 const
   MinDist = 0.5; // см
@@ -119,11 +131,11 @@ begin
   Result := 1.0 / Power(D, ExponentN);
 end;
 
-function PredictChannel(const P: TPoint2D; A: Double;
+function PredictChannelValue(const P: TPoint2D; A: Double;
   const Pair: TElectrodePair; ExponentN: Double): Double;
 begin
-  Result := A * (FieldContribution(P, Pair.Plus, ExponentN) -
-    FieldContribution(P, Pair.Minus, ExponentN));
+  Result := A * (FieldContributionValue(P, Pair.Plus, ExponentN) -
+    FieldContributionValue(P, Pair.Minus, ExponentN));
 end;
 
 { Решение системы 3x3 методом Крамера - для такой маленькой и локальной
@@ -182,6 +194,7 @@ var
   JtR, Delta: TVec3;
   Cost, TrialCost, Lambda: Double;
   Iter, Ch, ParamIdx, ParamIdx2, K: Integer;
+  HaveAccept: Boolean;
 
   procedure ComputeResiduals(const Params: array of Double;
     var Res: array of Double);
@@ -194,7 +207,7 @@ var
     Pt.Y := Params[1];
     A := Params[2];
     for C := 0 to 3 do
-      Res[C] := PredictChannel(Pt, A, FElectrodes[C], FExponentN) -
+      Res[C] := PredictChannelValue(Pt, A, FElectrodes[C], FExponentN) -
         Amplitudes[C];
   end;
 
@@ -224,6 +237,7 @@ begin
   ComputeResiduals(P, R);
   Cost := SumSq(R);
   Lambda := InitialLambda;
+  HaveAccept := False;
   Result.Converged := False;
 
   {$IFDEF EODLOC_DEBUG}
@@ -288,6 +302,7 @@ begin
     if TrialCost < Cost then
     begin
       P := Trial;
+      HaveAccept := True;
       {$IFDEF EODLOC_DEBUG}
       Writeln(Format('  [DBG] Iter %d ACCEPT: P=(%.3f,%.3f,%.3f) Cost=%.8f->%.8f Lambda=%.6f',
         [Iter, P[0], P[1], P[2], Cost, TrialCost, Lambda]));
@@ -295,7 +310,6 @@ begin
       if (Cost - TrialCost) < 1E-12 * (Cost + 1E-12) then
       begin
         Cost := TrialCost;
-        Result.Converged := True;
         Break;
       end;
       Cost := TrialCost;
@@ -317,6 +331,13 @@ begin
   Result.Position.Y := P[1];
   Result.Amplitude := P[2];
   Result.ResidualRMS := Sqrt(Cost / 4);
+  { «Сошлось» = метод сделал хотя бы один реальный шаг и остановился у
+    локального минимума (упёрся либо в порог улучшения, либо в лимит
+    итераций/диагональ ЛМ). Качество фита пользователь оценивает по
+    ResidualRMS и по попаданию позиции внутрь аквариума (см. форму
+    разметки); сам по себе флаг означает "минимум найден", а не
+    "позиция достоверна". }
+  Result.Converged := HaveAccept;
 end;
 
 function TSourceLocalizer.LocalizeMultiStart(const Amplitudes: array of Double;

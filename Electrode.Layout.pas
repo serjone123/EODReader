@@ -21,7 +21,7 @@ const
     место, которое нужно будет поменять в этом модуле. }
   EodChannelCount = 4;
 
-  ElectrodeLayoutFormatVersion = 1;
+  ElectrodeLayoutFormatVersion = 2;
 
 type
   { Одна физически подключённая пара контактов (дифференциальный вход),
@@ -40,6 +40,15 @@ type
   TElectrodePairInput = record
     PointA, PointB: TPoint2D; // пиксельные координаты на исходном кадре
     Label_: string; // произвольная пользовательская пометка (необязательно)
+
+    { Соответствие пары каналу записи. 0..3 = Ch1..Ch4, -1 = ещё не назначен.
+      Заполняется пользователем вручную (примерно, по наблюдению, у какого
+      электрода какие пики максимальны при подходе рыбы) или автоматически
+      перебором в Electrode.Matching. ВАЖНО: имена полей пары намеренно
+      нейтральные (PointA/PointB), полярность (+/-) отдельно подбирается
+      по реальным амплитудам — см. комментарий выше и CoordinateMatch в
+      Electrode.Matching. }
+    ChannelIndex: Integer;
   end;
 
   TElectrodePairInputArray = array of TElectrodePairInput;
@@ -296,11 +305,12 @@ begin
     SL.Add('  "electrodePairs": [');
     for I := 0 to High(Layout.Pairs) do
     begin
-      SL.Add('    {');
-      SL.Add('      "label": "' + JsonEscape(Layout.Pairs[I].Label_) + '",');
-      SL.Add('      "pointA": ' + PointToJson(Layout.Pairs[I].PointA) + ',');
-      SL.Add('      "pointB": ' + PointToJson(Layout.Pairs[I].PointB));
-      SL.Add('    }' + IfThen(I < High(Layout.Pairs), ',', ''));
+SL.Add('    {');
+    SL.Add('      "label": "' + JsonEscape(Layout.Pairs[I].Label_) + '",');
+    SL.Add(Format('      "channelIndex": %d,', [Layout.Pairs[I].ChannelIndex]));
+    SL.Add('      "pointA": ' + PointToJson(Layout.Pairs[I].PointA) + ',');
+    SL.Add('      "pointB": ' + PointToJson(Layout.Pairs[I].PointB));
+    SL.Add('    }' + IfThen(I < High(Layout.Pairs), ',', ''));
     end;
     SL.Add('  ],');
 
@@ -444,6 +454,12 @@ begin
         I := FindKeyValuePos(Objects[J], 'label');
         if I > 0 then Label_ := ParseJsonString(Objects[J], I)
         else Label_ := '';
+
+        { channelIndex появился в версии 2 формата — в файлах версии 1 поле
+          отсутствует, и тогда значение по умолчанию -1 (канал не назначен). }
+        I := FindKeyValuePos(Objects[J], 'channelIndex');
+        if I > 0 then ChannelIndex := Round(ParseJsonNumber(Objects[J], I))
+        else ChannelIndex := -1;
 
         I := FindKeyValuePos(Objects[J], 'pointA');
         if I > 0 then

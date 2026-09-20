@@ -20,6 +20,7 @@ uses
 , Core.ConfigStore, GUI.SettingsForm
 , GUI.FileNaming
 , FMX.Menus
+, Electrode.Matching
 , Electrode.LayoutForm
 , GUI.VideoExportForm
  ;
@@ -98,6 +99,11 @@ type
 
     FPlayer: TEodPlayer;
 
+    { Постоянная немодальная форма разметки электродов (Electrode.LayoutForm).
+      Создаётся один раз, при закрытии прячется (caHide) и живёт до закрытия
+      главной формы — разметка переживает открытие/закрытие окна. }
+    FElectrodeForm: TElectrodeLayoutForm;
+
     FWheelAccumulator: Integer;
 
     FLastDir: string;
@@ -122,6 +128,17 @@ type
     procedure BackgroundCloseRequest(Sender: TObject);
     procedure PlotViewChanged(Sender: TObject; ViewStart, ViewEnd: Int64);
     procedure ViewRangeChanged(AStart, AEnd: Int64);
+
+    { Собирает амплитуды EOD-событий по каналам из пиков текущей записи
+      для локализации положения рыбы (кнопка "Разметка электродов"). }
+    procedure BuildAmplitudeEvents(out AEvents: TElectrodeEventArray);
+
+    { «Живое» событие под курсором (или под воспроизводимым пиком): шлёт его
+      в форму разметки, где локализуется текущая позиция рыбы и рисуется
+      путь. Вызывается из ViewRangeChanged (каждое изменение вида). }
+    procedure PushCurrentEventToLayout;
+    function FindNearestPeakIndex(APosition: Int64): Integer;
+    procedure LayoutFormClose(Sender: TObject; var Action: TCloseAction);
   end;
 
 var
@@ -133,7 +150,8 @@ uses
   System.Math
   {$IFDEF MSWINDOWS}
   , Winapi.Windows, Winapi.ShellAPI
-  {$ENDIF};
+  {$ENDIF}
+  , Electrode.Amplitudes;
 
 {$R *.fmx}
 
@@ -429,6 +447,7 @@ procedure TMainForm.OpenFinished(Session: TEodGuiSession;
   Canceled: Boolean; const ErrorText: string);
 var
   OldSession: TEodGuiSession;
+  Events: TElectrodeEventArray;
 begin
   if FBackground.Closing then
   begin
@@ -477,6 +496,14 @@ begin
   SetRangeEdits(0, 200);
 
   FView.ShowRange(0, 200);
+
+  { Сессия сменилась — форма разметки должна знать новые амплитуды,
+    иначе batch-локализация будет работать со старыми данными. }
+  if Assigned(FElectrodeForm) then
+  begin
+    BuildAmplitudeEvents(Events);
+    FElectrodeForm.SetAmplitudes(Events);
+  end;
 
   UpdateStatus(Format('WAV: %.3f sec, %d Hz, %d frames',
     [FSession.TotalFrames / FSession.SampleRate, FSession.SampleRate,
@@ -1065,8 +1092,146 @@ begin
 end;
 
 procedure TMainForm.btGeometryClick(Sender: TObject);
+var
+  Events: TElectrodeEventArray;
 begin
-  ShowElectrodeLayoutForm
+  { Постоянная немодальная форма разметки: создаётся один раз (OnClose
+    только прячет её — данные разметки переживают закрытие окна). }
+  if not Assigned(FElectrodeForm) then
+  begin
+    FElectrodeForm := TElectrodeLayoutForm.Create(Self);
+    FElectrodeForm.OnClose := LayoutFormClose;
+  end;
+
+  { События пиков текущей записи (для batch-локализации кнопкой
+    «Локализовать»); без записи форма работает автономно. }
+  BuildAmplitudeEvents(Events);
+  FElectrodeForm.SetAmplitudes(Events);
+
+  FElectrodeForm.Show;
+  FElectrodeForm.BringToFront;
+
+  { «Живой» маркер сразу под текущим курсором. }
+  PushCurrentEventToLayout;
+end;
+
+procedure TMainForm.LayoutFormClose(Sender: TObject; var Action: TCloseAction);
+begin
+  { Форму не уничтожаем — прячем, чтобы разметка (углы, пары, каналы,
+    полярность) пережила закрытие окна. Освободит владелец (TMainForm). }
+  Action := TCloseAction.caHide;
+end;
+
+function TMainForm.FindNearestPeakIndex(APosition: Int64): Integer;
+var
+  Lo, Hi, Mid: Integer;
+  PosMid, PosLo, PosHi: Int64;
+begin
+  Result := 0;
+  if FSession.PeakCount = 0 then
+    Exit;
+
+  { Позиции пиков отсортированы по кадру — бинарный поиск нижней границы. }
+  Lo := 0;
+  Hi := FSession.PeakCount - 1;
+  while Lo < Hi do
+  begin
+    Mid := (Lo + Hi) div 2;
+    PosMid := FSession.GetPeakPosition(Mid);
+    if PosMid < APosition then
+      Lo := Mid + 1
+    else
+      Hi := Mid;
+  end;
+
+  { Между двух соседних пиков берём ближайший по кадру. }
+  Result := Lo;
+  if Result > 0 then
+  begin
+    PosLo := Abs(FSession.GetPeakPosition(Result - 1) - APosition);
+    PosHi := Abs(FSession.GetPeakPosition(Result) - APosition);
+    if PosLo < PosHi then
+      Dec(Result);
+  end;
+end;
+
+procedure TMainForm.PushCurrentEventToLayout;
+var
+  Event: TElectrodeEventAmplitudes;
+  Index: Integer;
+  Chunk: TAudioChunk;
+  Peak, ReadPeakRec: TPeak;
+  StartFrame: Int64;
+begin
+  if not Assigned(FElectrodeForm) then
+    Exit;
+  if (FSession = nil) or (FSession.Mode = dmNone) or
+     (FSession.PeakCount = 0) then
+    Exit;
+
+  Index := FindNearestPeakIndex(CurrentFrame);
+
+  if FSession.Mode = dmWav then
+  begin
+    if not FSession.GetPeak(Index, Peak) then
+      Exit;
+    Event.Frame := Peak.Position;
+    Chunk := FSession.ReadSegment(Peak.Position - 30, 61, True);
+  end
+  else
+  begin
+    { dmPeakFile: окно события читается только через ReadPeak. }
+    Chunk := FSession.ReadPeak(Index, ReadPeakRec, StartFrame);
+    Event.Frame := StartFrame;
+  end;
+
+  Event.Amplitudes := ExtractEventAmplitudes(Chunk);
+  FElectrodeForm.UpdateLiveEvent(Event);
+end;
+
+procedure TMainForm.BuildAmplitudeEvents(out AEvents: TElectrodeEventArray);
+var
+  Sess: TEodGuiSession;
+  Total, I, Step, N, Idx: Integer;
+  Chunk: TAudioChunk;
+  Peak: TPeak;
+  StartFrame: Int64;
+begin
+  SetLength(AEvents, 0);
+  Sess := FSession;
+  if (Sess = nil) or (Sess.Mode = dmNone) then
+    Exit;
+
+  Total := Sess.PeakCount;
+  if Total <= 0 then
+    Exit;
+
+  { Для локализации достаточно репрезентативного подмножества пиков,
+    равномерно распределённых по всей записи: берём не более 150, с
+    шагом по индексу. Окно вокруг события (61 кадр) читается: из WAV -
+    произвольным чтением по позиции пика, из .eodpk - через ReadPeak. }
+  N := Min(Total, 150);
+  if N > 1 then
+    Step := (Total - 1) div (N - 1)
+  else
+    Step := 1;
+
+  SetLength(AEvents, N);
+  for I := 0 to N - 1 do
+  begin
+    Idx := I * Step;
+    if Sess.Mode = dmWav then
+    begin
+      if not Sess.GetPeak(Idx, Peak) then
+        Continue;
+      StartFrame := Peak.Position;
+      Chunk := Sess.ReadSegment(Max(0, Peak.Position - 30), 61, True);
+    end
+    else
+      Chunk := Sess.ReadPeak(Idx, Peak, StartFrame);
+    AEvents[I].Frame := StartFrame;
+    AEvents[I].Amplitudes := ExtractEventAmplitudes(Chunk);
+  end;
 end;
 
 procedure TMainForm.btVideoExportClick(Sender: TObject);
@@ -1121,6 +1286,10 @@ end;
 procedure TMainForm.ViewRangeChanged(AStart, AEnd: Int64);
 begin
   SetRangeEdits(AStart, AEnd);
+  { Курсор/воспроизведение сдвинулись — обновляем «живой» маркер рыбы
+    в форме разметки (если она создана). Во время воспроизведения это
+    рисует путь рыбы на кадре. }
+  PushCurrentEventToLayout;
 end;
 
 end.
