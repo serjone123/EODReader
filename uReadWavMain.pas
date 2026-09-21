@@ -1325,7 +1325,7 @@ end;
 
 procedure TMainForm.cbBucketModeBoxChange(Sender: TObject);
 begin
-  FOverviewController.SetOverviewLook(cbOverviewLookBox.ItemIndex);
+  FOverviewController.SetOverviewLook(cbBucketModeBox.ItemIndex);
 end;
 
 procedure TMainForm.cbOverviewLookBoxChange(Sender: TObject);
@@ -1333,7 +1333,8 @@ begin
 { Режим бакетов применяется при построении обзора EODPK, поэтому
     строим заново (для EODPK это быстрое чтение кэша). }
   if FSession.Mode = dmPeakFile then
-    FOverviewController.StartPeakOverview(FSession.PeakFile, cbBucketModeBox.ItemIndex = 0);
+    FOverviewController.StartPeakOverview(FSession.PeakFile,
+     cbOverviewLookBox.ItemIndex = 0);
 end;
 
 procedure TMainForm.lbPeakListClick(Sender: TObject);

@@ -3,43 +3,24 @@
 interface
 
 uses
-  System.Classes, System.SysUtils, System.SyncObjs,
-  Core.Types, IO.PeakStore, Threads.Base;
+  System.Classes, System.SysUtils,
+  Core.Types, IO.PeakStore, Threads.OverviewBase;
 
 type
-  TPeakOverviewProgressEvent = procedure(Sender: TObject; Processed, Total: Int64) of object;
-  TPeakOverviewFinishedEvent = procedure(Sender: TObject;
-    const OverviewMin, OverviewMax: TFloatArray;
-    const ChannelMin, ChannelMax: TChannelEnvelopes;
-    TotalFrames: Int64; Canceled: Boolean;
-    const ErrorText: string) of object;
-
-  { Построение обзорной огибающей из кэша .eodpk. Отмену, тексты ошибок
-    и вызов DoFinished (в главном потоке) обеспечивает TEodBackgroundThread. }
-  TEodPeakOverviewThread = class(TEodBackgroundThread)
+  { Построение обзорной огибающей из кэша .eodpk: ReadEnvelope и раскладка
+    бакетов кэша по бинам обзора. Общий каркас — в TEodOverviewBaseThread. }
+  TEodPeakOverviewThread = class(TEodOverviewBaseThread)
   private
     FFileName: string;
-    FPoints: Integer;
-    FOverviewMin: TFloatArray;
-    FOverviewMax: TFloatArray;
-    FChannelMin: TChannelEnvelopes;
-    FChannelMax: TChannelEnvelopes;
-    FTotalFrames: Int64;
-    FProcessed: Int64;
-    FOnProgress: TPeakOverviewProgressEvent;
-    FOnFinished: TPeakOverviewFinishedEvent;
     FSpreadBuckets: Boolean;
   protected
     procedure RunTask; override;
-    procedure DoProgress; override;
-    procedure DoFinished; override;
   public
     constructor Create(const AFileName: string; APoints: Integer = 2000);
-    property OnProgress: TPeakOverviewProgressEvent read FOnProgress write FOnProgress;
-    property OnFinished: TPeakOverviewFinishedEvent read FOnFinished write FOnFinished;
-        { True — бакет кэша заполняет все бины своего диапазона кадров;
+
+    { True — бакет кэша заполняет все бины своего диапазона кадров;
       False — только бин по центру диапазона. Временный переключатель
-      для визуального сравнения. }
+      для визуального сравнения. Есть только у обзора EODPK. }
     property SpreadBuckets: Boolean read FSpreadBuckets write FSpreadBuckets;
   end;
 
@@ -51,25 +32,9 @@ uses
 constructor TEodPeakOverviewThread.Create(const AFileName: string;
   APoints: Integer);
 begin
-  inherited Create;
+  inherited Create(APoints);
   FFileName := AFileName;
-  FPoints := APoints;
-  if FPoints < 1 then
-    FPoints := 1;
   FSpreadBuckets := True;
-end;
-
-procedure TEodPeakOverviewThread.DoProgress;
-begin
-  if Assigned(FOnProgress) then
-    FOnProgress(Self, FProcessed, FTotalFrames);
-end;
-
-procedure TEodPeakOverviewThread.DoFinished;
-begin
-  if Assigned(FOnFinished) then
-    FOnFinished(Self, FOverviewMin, FOverviewMax,
-      FChannelMin, FChannelMax, FTotalFrames, FCanceled, FErrorText);
 end;
 
 procedure TEodPeakOverviewThread.RunTask;
@@ -112,15 +77,7 @@ var
   end;
 
 begin
-  FProcessed := 0;
-  FTotalFrames := 0;
-  SetLength(FOverviewMin, 0);
-  SetLength(FOverviewMax, 0);
-  for Ch := 0 to 3 do
-  begin
-    SetLength(FChannelMin[Ch], 0);
-    SetLength(FChannelMax[Ch], 0);
-  end;
+  ResetResult;
 
   Store := nil;
   try

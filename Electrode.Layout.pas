@@ -23,6 +23,10 @@ const
 
   ElectrodeLayoutFormatVersion = 2;
 
+  { Версия формата файла истинных позиций рыбы (файл *_marks.json, см.
+    TTruthMark). Меняется при несовместимых изменениях схемы. }
+  TruthMarksFormatVersion = 1;
+
 type
   { Одна физически подключённая пара контактов (дифференциальный вход),
     указанная пользователем на изображении.
@@ -70,6 +74,31 @@ type
   end;
 
   TFishReferenceMarkArray = array of TFishReferenceMark;
+
+  { Метка «истинная позиция рыбы»: положение рыбы на кадре, указанное
+    пользователем на глаз и привязанное к конкретному событию записи.
+    Пишется формой разметки (Electrode.LayoutForm) кнопкой «Отметить
+    истинную позицию» при клике по кадру и читается консольным
+    инструментом Electrode.SimLayout --truth для честной сверки модели
+    поля с реальными данными (см. TruthMarksFormatVersion).
+
+    PositionRel — относительные координаты (0..1), полученные из пикселей
+    кадра через ТУ ЖЕ калибровку (BuildCalibrationFromLayout), что и пары
+    электродов, поэтому метки корректны даже если геометрию/размеры
+    позже поправят. HasAmp = False, если метка поставлена без
+    привязанного события (амплитуды неизвестны). }
+  TTruthMark = record
+    Frame: Int64; // кадр события в записи; -1 = неизвестен
+    CEvent: Integer; // индекс события в наборе амплитуд записи; -1 = неизвестен
+    PositionRel: TPoint2D; // положения рыбы, относительные координаты
+    HasAmp: Boolean; // True, если метка стоит при известном событии
+    Amplitudes: array [0 .. 3] of Double; // 4 амплитуды (со знаком);
+                                          // знак канала = знак окна, где
+                                          // |сигнал| этого канала максимален
+    Note: string; // произвольный комментарий (по умолчанию пустой)
+  end;
+
+  TTruthMarkArray = array of TTruthMark;
 
   { Полный набор данных, вводимых пользователем на одном калибровочном
     кадре: 4 угла аквариума (для геометрической калибровки, см.
@@ -119,6 +148,19 @@ procedure SaveElectrodeLayoutToJSON(const Layout: TElectrodeLayoutInput;
   const FileName: string);
 
 function LoadElectrodeLayoutFromJSON(const FileName: string): TElectrodeLayoutInput;
+
+{ Истинные позиции рыбы (см. TTruthMark) - компактный отдельный JSON-файл
+  рядом с разметкой (имя = имя файла разметки + расширение _marks.json),
+  чтобы разметку не приходилось дублировать в каждом прогоне. Хранит:
+  имя файла разметки, размеры аквариума (0 = не заданы) и список меток.
+  Пишется формой разметки, читается Electrode.SimLayout --truth. }
+procedure SaveTruthMarksToJSON(const Marks: TTruthMarkArray;
+  const ALayoutFile: string;
+  const ATankWidthCm, ATankHeightCm: Double;
+  const AFileName: string);
+
+function LoadTruthMarksFromJSON(const AFileName: string;
+  out ALayoutFile: string; out ATankWidthCm, ATankHeightCm: Double): TTruthMarkArray;
 
 { Строит TAquariumCalibration из TankCorners. Результат PixelToWorld -
   ОТНОСИТЕЛЬНЫЕ координаты (0..1 по каждой оси), сантиметры не нужны на
@@ -587,7 +629,221 @@ begin
     Result.Y := 0;
 end;
 
+{ ------------------------------------------------------------------ }
+{ Истинные позиции рыбы (TTruthMark): JSON рядом с файлом разметки.   }
+{ Формат тот же минимальный без внешних библиотек, что и у разметки, }
+{ поэтому парсинг/запись сделаны в том же стиле.                     }
+{ ------------------------------------------------------------------ }
+
+{ Разбивает текст JSON-массива на подстроки верхнего уровня (объекты
+  JSON, каждый в своих фигурных скобках) - копия локальной функции
+  LoadElectrodeLayoutFromJSON.ExtractTopLevelObjects, вынесенная на уровень
+  модуля ради повторного использования (для marks[]). }
+function SplitTopLevelJsonObjects(const Text: string): TArray<string>;
+var
+  P, ObjStart, ObjEnd, Depth: Integer;
+begin
+  SetLength(Result, 0);
+  P := 1;
+  while True do
+  begin
+    ObjStart := PosEx('{', Text, P);
+    if ObjStart = 0 then
+      Break;
+
+    Depth := 0;
+    ObjEnd := ObjStart;
+    while ObjEnd <= Length(Text) do
+    begin
+      if Text[ObjEnd] = '{' then
+        Inc(Depth)
+      else if Text[ObjEnd] = '}' then
+      begin
+        Dec(Depth);
+        if Depth = 0 then
+          Break;
+      end;
+      Inc(ObjEnd);
+    end;
+    if Depth <> 0 then
+      Break; // файл повреждён - прекращаем разбор
+
+    SetLength(Result, Length(Result) + 1);
+    Result[High(Result)] := Copy(Text, ObjStart, ObjEnd - ObjStart + 1);
+    P := ObjEnd + 1;
+  end;
+end;
+
+procedure SaveTruthMarksToJSON(const Marks: TTruthMarkArray;
+  const ALayoutFile: string;
+  const ATankWidthCm, ATankHeightCm: Double;
+  const AFileName: string);
+var
+  SL: TStringList;
+  I: Integer;
+
+  function AmpToJson: string;
+  var
+    K: Integer;
+  begin
+    Result := '[';
+    for K := 0 to 3 do
+    begin
+      if K > 0 then
+        Result := Result + ', ';
+      Result := Result + Format('%.4f', [Marks[I].Amplitudes[K]], JsonFS);
+    end;
+    Result := Result + ']';
+  end;
+
+begin
+  SL := TStringList.Create;
+  try
+    SL.Add('{');
+    SL.Add(Format('  "formatVersion": %d,', [TruthMarksFormatVersion]));
+    SL.Add(Format('  "layoutFile": "%s",', [JsonEscape(ALayoutFile)]));
+    SL.Add(Format('  "tankWidthCm": %.3f,', [ATankWidthCm], JsonFS));
+    SL.Add(Format('  "tankHeightCm": %.3f,', [ATankHeightCm], JsonFS));
+    SL.Add('  "marks": [');
+    for I := 0 to High(Marks) do
+    begin
+      SL.Add('    {');
+      SL.Add(Format('      "frame": %d,', [Marks[I].Frame]));
+      SL.Add(Format('      "cevent": %d,', [Marks[I].CEvent]));
+      SL.Add(Format('      "xRel": %.4f,', [Marks[I].PositionRel.X], JsonFS));
+      SL.Add(Format('      "yRel": %.4f,', [Marks[I].PositionRel.Y], JsonFS));
+      SL.Add(Format('      "hasAmp": %s,', [BoolToStr(Marks[I].HasAmp, True)]));
+      SL.Add('      "ampl": ' + AmpToJson + ',');
+      SL.Add('      "note": "' + JsonEscape(Marks[I].Note) + '"');
+      SL.Add('    }' + IfThen(I < High(Marks), ',', ''));
+    end;
+    SL.Add('  ]');
+    SL.Add('}');
+    SL.SaveToFile(AFileName, TEncoding.UTF8);
+  finally
+    SL.Free;
+  end;
+end;
+
+function LoadTruthMarksFromJSON(const AFileName: string;
+  out ALayoutFile: string; out ATankWidthCm, ATankHeightCm: Double): TTruthMarkArray;
+var
+  S: string;
+  Pos, ArrStart, ArrEnd, I, J, P, C: Integer;
+  Objects: TArray<string>;
+begin
+  SetLength(Result, 0);
+  ALayoutFile := '';
+  ATankWidthCm := 0;
+  ATankHeightCm := 0;
+
+  if not FileExists(AFileName) then
+    Exit;
+
+  with TStringList.Create do
+    try
+      LoadFromFile(AFileName, TEncoding.UTF8);
+      S := Text;
+    finally
+      Free;
+    end;
+
+  Pos := FindKeyValuePos(S, 'formatVersion');
+  if Pos <= 0 then
+    Exit; // не похоже на marks-файл
+
+  Pos := FindKeyValuePos(S, 'layoutFile');
+  if Pos > 0 then
+    ALayoutFile := ParseJsonString(S, Pos);
+
+  Pos := FindKeyValuePos(S, 'tankWidthCm');
+  if Pos > 0 then
+    ATankWidthCm := ParseJsonNumber(S, Pos);
+
+  Pos := FindKeyValuePos(S, 'tankHeightCm');
+  if Pos > 0 then
+    ATankHeightCm := ParseJsonNumber(S, Pos);
+
+  ArrStart := FindKeyValuePos(S, 'marks');
+  if ArrStart <= 0 then
+    Exit;
+  { Конец массива marks — берём ПОСЛЕДНЮЮ закрывающую скобку: внутри
+    объектов есть вложенные массивы "ampl", и первая ']' после ArrStart
+    принадлежала бы вложенному массиву амплитуд первой метки. }
+  ArrEnd := LastDelimiter(']', S);
+  if ArrEnd <= ArrStart then
+    ArrEnd := Length(S);
+  Objects := SplitTopLevelJsonObjects(Copy(S, ArrStart, ArrEnd - ArrStart));
+
+  SetLength(Result, Length(Objects));
+  for J := 0 to High(Objects) do
+    with Result[J] do
+    begin
+      Frame := -1;
+      CEvent := -1;
+      HasAmp := False;
+      Note := '';
+
+      I := FindKeyValuePos(Objects[J], 'frame');
+      if I > 0 then
+        Frame := Trunc(ParseJsonNumber(Objects[J], I));
+
+      I := FindKeyValuePos(Objects[J], 'cevent');
+      if I > 0 then
+        CEvent := Round(ParseJsonNumber(Objects[J], I));
+
+      I := FindKeyValuePos(Objects[J], 'xRel');
+      if I > 0 then
+        PositionRel.X := ParseJsonNumber(Objects[J], I);
+
+      I := FindKeyValuePos(Objects[J], 'yRel');
+      if I > 0 then
+        PositionRel.Y := ParseJsonNumber(Objects[J], I);
+
+      I := FindKeyValuePos(Objects[J], 'hasAmp');
+      if I > 0 then
+        { Значение - настоящий JSON-литерал true/false (без кавычек,
+          ParseJsonString их бы не прочитал), поэтому смотрим на первый
+          символ токена. }
+        HasAmp := (I <= Length(Objects[J])) and
+          CharInSet(Objects[J][I], ['t', 'T']);
+
+      { Массив амплитуд "ampl": [a0, a1, a2, a3] - читаем 4 числа. }
+      I := FindKeyValuePos(Objects[J], 'ampl');
+      if I > 0 then
+      begin
+        P := I;
+        C := 0;
+        while (C < 4) and (P <= Length(Objects[J])) do
+        begin
+          SkipWhitespace(Objects[J], P);
+          if P > Length(Objects[J]) then
+            Break;
+          if (Objects[J][P] = ',') or (Objects[J][P] = '[') then
+            Inc(P);
+          SkipWhitespace(Objects[J], P);
+          if (P <= Length(Objects[J])) and
+             CharInSet(Objects[J][P], ['0'..'9', '-', '+', '.', 'e', 'E']) then
+          begin
+            Amplitudes[C] := ParseJsonNumber(Objects[J], P);
+            Inc(C);
+          end
+          else
+            Inc(P); // защита от бесконечного цикла
+        end;
+      end;
+
+      I := FindKeyValuePos(Objects[J], 'note');
+      if I > 0 then
+        Note := ParseJsonString(Objects[J], I);
+    end;
+end;
+
 initialization
+
+  { Без вызова JsonFS остаётся заполненным нулями (DecimalSeparator = #0),
+    и все дробные числа JSON (0.5, 60.000, координаты углов...) читались
+    бы как 0 - разметка при повторном открытии разваливалась бы. }
   InitJsonFormatSettings;
 
 end.

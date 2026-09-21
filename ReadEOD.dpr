@@ -43,7 +43,8 @@ uses
   Video.FfmpegLocate in 'Video.FfmpegLocate.pas',
   Video.OverlayRenderer in 'Video.OverlayRenderer.pas',
   Threads.Base in 'Threads.Base.pas',
-  GUI.ViewController in 'GUI.ViewController.pas';
+  GUI.ViewController in 'GUI.ViewController.pas',
+  Threads.OverviewBase in 'Threads.OverviewBase.pas';
 
 {$R *.res}
 

@@ -13,7 +13,7 @@ uses
 
 type
   { Режим, определяющий, что означает следующий клик по картинке. }
-  TLayoutInputMode = (limNone, limCorners, limPair, limFish);
+  TLayoutInputMode = (limNone, limCorners, limPair, limFish, limTruth);
 
   { Тип последнего ЗАВЕРШЁННОГО действия пользователя (для корректной
     работы "Отменить последнюю точку" - без этого трекера Undo не мог
@@ -47,6 +47,7 @@ type
     FBtnExportJson: TButton;
     FBtnImportJson: TButton;
     FBtnClearMarkers: TButton;
+    FBtnMarkTruth: TButton;
 
     { Соответствие пары → канал записи: у каждого электрода (пары) СВОЙ
       комбобокс, без промежуточного выделения в списке. Занятый канал не
@@ -105,6 +106,12 @@ type
     FLiveTrail: array of TPoint2D;
     FLiveInfo: TLabel;
 
+    { Метки «истинная позиция рыбы»: клики по кадру, привязанные к событию
+      записи. Сохраняются в JSON (Electrode.Layout, TTruthMark) рядом с
+      разметкой для честной сверки модели поля с реальными данными
+      консольным инструментом SimLayout --truth. }
+    FTruthMarks: TTruthMarkArray;
+
     FMode: TLayoutInputMode;
     FCornersPlaced: Integer;       // 0..4 - сколько углов уже отмечено в текущем проходе
     FHavePendingPairPoint: Boolean; // есть ли уже первая точка незавершённой пары
@@ -128,6 +135,9 @@ type
     procedure BtnSetCornersClick(Sender: TObject);
     procedure BtnAddPairClick(Sender: TObject);
     procedure BtnAddFishClick(Sender: TObject);
+    procedure BtnMarkTruthClick(Sender: TObject);
+    procedure SaveTruthMarksToFile;
+    function EventIndexForFrame(AFrame: Int64): Integer;
     procedure BtnUndoClick(Sender: TObject);
     procedure BtnClearAllClick(Sender: TObject);
     procedure BtnExportJsonClick(Sender: TObject);
@@ -307,11 +317,11 @@ begin
   Width := 1100;
 
   { Высота под всё содержимое панели справа: кнопки, список пар, канал,
-    полярность Ch1..Ch4 и две информационные строки («Локализовать» и
-    «живой маркер») — иначе нижние элементы уезжают за край окна и
-    обратной связи не видно. Компактная версия: ряды по 24 px, список
-    пар — всего на 4 записи. }
-  Height := 720;
+    полярность Ch1..Ch4, кнопку «Отметить истинную позицию» и две
+    информационные строки («Локализовать» и «живой маркер») — иначе
+    нижние элементы уезжают за край окна и обратной связи не видно.
+    Компактная версия: ряды по 24 px, список пар — всего на 4 записи. }
+  Height := 760;
   Position := TFormPosition.ScreenCenter;
 
   FLayout := CreateEmptyLayout;
@@ -332,6 +342,7 @@ begin
   FDisplayScale := 1;
   FDisplayOffsetX := 0;
   FDisplayOffsetY := 0;
+  SetLength(FTruthMarks, 0);
 
   { --- Правая панель с кнопками и полями --- }
   ButtonsPanel := TLayout.Create(Self);
@@ -384,6 +395,7 @@ begin
   FBtnSetCorners := AddButton('Указать углы аквариума', BtnSetCornersClick);
   FBtnAddPair := AddButton('Добавить пару электродов', BtnAddPairClick);
   FBtnAddFish := AddButton('Отметить рыбу (голова+хвост)', BtnAddFishClick);
+  FBtnMarkTruth := AddButton('Отметить истинную позицию', BtnMarkTruthClick);
   FBtnUndo := AddButton('Отменить последнюю точку', BtnUndoClick);
   FBtnClearAll := AddButton('Очистить всё', BtnClearAllClick);
 
@@ -720,6 +732,18 @@ begin
     DrawMarker(ToScreen(FPendingFishHead), TAlphaColorRec.Cyan,
       Format('Рыба %d: Г (ждём хвост)', [Length(FLayout.FishMarks) + 1]));
 
+  { Метки «истинная позиция рыбы»: белые кружки с малиновым маркером и
+    подписью «И N» — их ставит кнопка «Отметить истинную позицию». }
+  if Assigned(FCalib) and (Length(FTruthMarks) > 0) then
+    for I := 0 to High(FTruthMarks) do
+    begin
+      P1 := ToScreen(FCalib.WorldToPixel(FTruthMarks[I].PositionRel));
+      Canvas.Fill.Kind := TBrushKind.Solid;
+      Canvas.Fill.Color := TAlphaColorRec.White;
+      Canvas.FillEllipse(RectF(P1.X - 5, P1.Y - 5, P1.X + 5, P1.Y + 5), 1);
+      DrawMarker(P1, TAlphaColorRec.Magenta, Format('И %d', [I + 1]));
+    end;
+
   { Результат локализации: зелёный маркер на место каждого события,
     участвовавшего в прогоне (кнопка "Локализовать (по пикам)"). Маркеры
     событий, позиция которых вылезла за пределы аквариума (плохой фит),
@@ -757,6 +781,7 @@ begin
     становится видно прямо на кадре. Рисуется только когда всем 4 парам
     назначены каналы. }
   if Assigned(FCalib) and FHasLivePosition and
+     HasKnownTankSize(FLayout) and
      (Length(FLayout.Pairs) = EodChannelCount) then
   begin
     ValidChannels := 0;
@@ -772,12 +797,17 @@ begin
       MaxV := 0;
       for C := 0 to 3 do
       begin
-        PairA := FCalib.PixelToWorld(FLayout.Pairs[C].PointA);
-        PairB := FCalib.PixelToWorld(FLayout.Pairs[C].PointB);
+        { Поле считается в САНТИМЕТРАХ (MinDist = 0.5 см в модели),
+          поэтому пару и точку рыбы перед расчётом переводим в см. }
+        PairA := RelativeToCm(
+          FCalib.PixelToWorld(FLayout.Pairs[C].PointA), FLayout);
+        PairB := RelativeToCm(
+          FCalib.PixelToWorld(FLayout.Pairs[C].PointB), FLayout);
         PElect.Plus := PairA;
         PElect.Minus := PairB;
         V[FLayout.Pairs[C].ChannelIndex] :=
-          Abs(PredictChannelValue(FLivePosition, 1, PElect, 1.5));
+          Abs(PredictChannelValue(RelativeToCm(FLivePosition, FLayout),
+            1, PElect, 1.5));
         if V[FLayout.Pairs[C].ChannelIndex] > MaxV then
           MaxV := V[FLayout.Pairs[C].ChannelIndex];
       end;
@@ -787,11 +817,14 @@ begin
           if (FLayout.Pairs[C].ChannelIndex >= 0) and
              (FLayout.Pairs[C].ChannelIndex <= 3) then
           begin
-            PairA := FCalib.PixelToWorld(FLayout.Pairs[C].PointA);
-            PairB := FCalib.PixelToWorld(FLayout.Pairs[C].PointB);
+            { Та же пара в см для середины «линии тока». }
+            PairA := RelativeToCm(
+              FCalib.PixelToWorld(FLayout.Pairs[C].PointA), FLayout);
+            PairB := RelativeToCm(
+              FCalib.PixelToWorld(FLayout.Pairs[C].PointB), FLayout);
             Mid.X := (PairA.X + PairB.X) / 2;
             Mid.Y := (PairA.Y + PairB.Y) / 2;
-            Sc := ToScreen(FCalib.WorldToPixel(Mid));
+            Sc := ToScreen(FCalib.WorldToPixel(CmToRelative(Mid, FLayout)));
             Canvas.Stroke.Kind := TBrushKind.Solid;
             Canvas.Stroke.Color :=
               EodChannelColors[FLayout.Pairs[C].ChannelIndex];
@@ -831,7 +864,7 @@ procedure TElectrodeLayoutForm.HandleImageClick(ImgX, ImgY: Single);
 var
   NewPair: TElectrodePairInput;
   NewFish: TFishReferenceMark;
-  N: Integer;
+  N, C: Integer;
 begin
   case FMode of
     limCorners:
@@ -899,12 +932,104 @@ begin
           FLastAction := laFish;
         end;
       end;
+
+    limTruth:
+      begin
+        { Однокликовый режим: клик по кадру ставит метку истинной позиции
+          рыбы, привязанную к последнему «живому» событию из главной формы
+          (если оно есть), и сразу сохраняет файл рядом с разметкой. }
+        try
+          if not Assigned(FCalib) then
+            FCalib := BuildCalibrationFromLayout(FLayout);
+        except
+          FCalib := nil;
+        end;
+        if Assigned(FCalib) then
+        begin
+          N := Length(FTruthMarks);
+          SetLength(FTruthMarks, N + 1);
+          FTruthMarks[N].Frame := -1;
+          FTruthMarks[N].CEvent := -1;
+          FTruthMarks[N].Note := '';
+          FTruthMarks[N].HasAmp := False;
+          if FHasLiveEvent then
+          begin
+            FTruthMarks[N].Frame := FLastLiveEvent.Frame;
+            FTruthMarks[N].CEvent := EventIndexForFrame(FLastLiveEvent.Frame);
+            for C := 0 to 3 do
+              FTruthMarks[N].Amplitudes[C] := FLastLiveEvent.Amplitudes[C];
+            FTruthMarks[N].HasAmp := True;
+          end;
+          FTruthMarks[N].PositionRel := FCalib.PixelToWorld(
+            TPoint2D.Create(ImgX, ImgY));
+          SaveTruthMarksToFile;
+        end
+        else
+          FInstructionLabel.Text :=
+            'Истинная позиция: укажите сначала 4 угла аквариума.';
+        FMode := limNone;
+      end;
   else
     ; // limNone - ничего не делаем
   end;
 
   UpdateStatus;
   FPaintBox.Repaint;
+end;
+
+procedure TElectrodeLayoutForm.BtnMarkTruthClick(Sender: TObject);
+begin
+  { Клик по кадру поставит метку истинной позиции рыбы (привязанную к
+    текущему «живому» событию) и сразу сохранит её в JSON рядом с
+    разметкой (Electrode.Layout.SaveTruthMarksToJSON). }
+  if FLastLayoutPath = '' then
+  begin
+    FInstructionLabel.Text :=
+      'Сначала сохраните разметку в JSON ("Экспорт в JSON") — метки пишутся рядом с ней.';
+    Exit;
+  end;
+  FMode := limTruth;
+  UpdateStatus;
+end;
+
+function TElectrodeLayoutForm.EventIndexForFrame(AFrame: Int64): Integer;
+var
+  I: Integer;
+begin
+  Result := -1;
+  for I := 0 to High(FAmplitudes) do
+    if FAmplitudes[I].Frame = AFrame then
+    begin
+      Result := I;
+      Exit;
+    end;
+end;
+
+procedure TElectrodeLayoutForm.SaveTruthMarksToFile;
+var
+  Dir, Base, OutName: string;
+begin
+  if FLastLayoutPath = '' then
+  begin
+    FInstructionLabel.Text :=
+      'Разметка не сохранена в JSON — откройте панель разметки заново и экспортируйте её (или импортируйте).';
+    Exit;
+  end;
+  Dir := ExtractFilePath(FLastLayoutPath);
+  Base := ChangeFileExt(ExtractFileName(FLastLayoutPath), '');
+  OutName := Dir + Base + '_marks.json';
+  ReadTankSizeFromEdits;
+  SaveTruthMarksToJSON(FTruthMarks,
+    ExtractFileName(FLastLayoutPath),
+    FLayout.TankWidthCm, FLayout.TankHeightCm, OutName);
+  if FHasLiveEvent then
+    FInstructionLabel.Text := Format(
+      'Истинных позиций: %d шт., сохранено: %s (с амплитудами события)',
+      [Length(FTruthMarks), OutName])
+  else
+    FInstructionLabel.Text := Format(
+      'Истинных позиций: %d шт., сохранено: %s (БЕЗ амплитуд — перед кликом поставьте курсор/плейхед на событие)',
+      [Length(FTruthMarks), OutName]);
 end;
 
 { ------------------------------------------------------------------ }
@@ -1301,9 +1426,10 @@ end;
 
 procedure TElectrodeLayoutForm.RunLocalization;
 var
-  Pairs: TPairGeometryArray;
+  Pairs, PairsRel: TPairGeometryArray;
   I: Integer;
   Res: TChannelMatchScanResult;
+  TankW, TankH: Double;
   ConvCount: Integer;
   InsideTankCount: Integer;
   CheckedEvents: Integer;
@@ -1330,19 +1456,38 @@ begin
     Exit;
   end;
 
-  { Пары в относительных координатах аквариума (0..1) — в тех же
-    координатах, что и результат локализации. }
+  { Локализация работает в САНТИМЕТРАХ: модель поля и MinDist = 0.5 см
+    в Electrode.Localization заданы в см, поэтому пары переводятся из
+    относительных 0..1 в см, прогон идёт по реальным размерам аквариума,
+    а результаты возвращаются обратно в относительные для отрисовки.
+    Без размеров локализация невозможна (иначе пришлось бы подставлять
+    MinDist в относительных единицах, что ломает поле у стенок). }
+  ReadTankSizeFromEdits;
+  if not HasKnownTankSize(FLayout) then
+  begin
+    FLocalizeInfo.Text := 'Укажите размеры аквариума (ширина и высота, см) — локализация считает поле в сантиметрах.';
+    Exit;
+  end;
+  TankW := FLayout.TankWidthCm;
+  TankH := FLayout.TankHeightCm;
+
+  { Пары: PairsRel — относительные 0..1 (для диагностики и отрисовки),
+    Pairs — те же пары в сантиметрах (для локализации). }
   SetLength(Pairs, EodChannelCount);
+  SetLength(PairsRel, EodChannelCount);
   for I := 0 to EodChannelCount - 1 do
   begin
-    Pairs[I].A := FCalib.PixelToWorld(FLayout.Pairs[I].PointA);
-    Pairs[I].B := FCalib.PixelToWorld(FLayout.Pairs[I].PointB);
+    PairsRel[I].A := FCalib.PixelToWorld(FLayout.Pairs[I].PointA);
+    PairsRel[I].B := FCalib.PixelToWorld(FLayout.Pairs[I].PointB);
+    PairsRel[I].UserChannel := FLayout.Pairs[I].ChannelIndex;
+    Pairs[I].A := RelativeToCm(PairsRel[I].A, FLayout);
+    Pairs[I].B := RelativeToCm(PairsRel[I].B, FLayout);
     Pairs[I].UserChannel := FLayout.Pairs[I].ChannelIndex;
   end;
 
   { Параметры поиска: сетка финального мультистарта 5x5, показатель
     поля 1.5, оценка комбинаций по первым 20 событиям на сетке 3x3. }
-  Res := ScanChannelAssignment(FAmplitudes, Pairs, 1, 1,
+  Res := ScanChannelAssignment(FAmplitudes, Pairs, TankW, TankH,
     5, 1.5, 20, 3);
 
   if not Res.OK then
@@ -1352,6 +1497,14 @@ begin
   end;
 
   FLocalizedEvents := Res.Events;
+
+  { Результаты локализации получены в см — возвращаем их в относительные
+    координаты для отрисовки и диагностики (позиции маркеров на кадре
+    тоже строятся через FCalib.WorldToPixel). }
+  for I := 0 to High(FLocalizedEvents) do
+    if FLocalizedEvents[I].Converged then
+      FLocalizedEvents[I].Position :=
+        CmToRelative(FLocalizedEvents[I].Position, FLayout);
 
   ConvCount := 0;
   InsideTankCount := 0;
@@ -1384,7 +1537,7 @@ begin
        InsideTank(FLocalizedEvents[I].Position) then
     begin
       Inc(CheckedEvents);
-      if NearestPairIndex(FLocalizedEvents[I].Position, Pairs) <>
+      if NearestPairIndex(FLocalizedEvents[I].Position, PairsRel) <>
          Res.Assignment[MostActiveChannel(FAmplitudes[I])] then
         Inc(MismatchEvents);
     end;
@@ -1478,14 +1631,15 @@ end;
 
 procedure TElectrodeLayoutForm.LocalizeLive;
 var
-  Pairs: TPairGeometryArray;
+  Pairs, PairsRel: TPairGeometryArray;
   I, O, C: Integer;
   Res, Cand: TLocalizedEvent;
   Signs: TSigns4;
   BestSigns: TSigns4;
-  BestPos: TPoint2D;
+  BestPos, ResPosRel: TPoint2D;
   BestFrame: Int64;
   BestRMS: Double;
+  TankW, TankH: Double;
   FoundInside: Boolean;
 begin
   if not FHasLiveEvent then
@@ -1494,7 +1648,11 @@ begin
     Exit;
 
   if not Assigned(FCalib) then
-    FCalib := BuildCalibrationFromLayout(FLayout);
+    try
+      FCalib := BuildCalibrationFromLayout(FLayout);
+    except
+      FCalib := nil;
+    end;
   if not Assigned(FCalib) then
   begin
     FLiveInfo.Text := 'Живой маркер: укажите сначала 4 угла аквариума.';
@@ -1512,27 +1670,45 @@ begin
     Exit;
   end;
 
+  { Локализация работает в сантиметрах (см. RunLocalization) — без
+    размеров аквариума живой маркер не строится. }
+  ReadTankSizeFromEdits;
+  if not HasKnownTankSize(FLayout) then
+  begin
+    FLiveInfo.Text := 'Живой маркер: укажите размеры аквариума (ширина и высота, см).';
+    FHasLivePosition := False;
+    FPaintBox.Repaint;
+    Exit;
+  end;
+  TankW := FLayout.TankWidthCm;
+  TankH := FLayout.TankHeightCm;
+
   SetLength(Pairs, EodChannelCount);
+  SetLength(PairsRel, EodChannelCount);
   for I := 0 to EodChannelCount - 1 do
   begin
-    Pairs[I].A := FCalib.PixelToWorld(FLayout.Pairs[I].PointA);
-    Pairs[I].B := FCalib.PixelToWorld(FLayout.Pairs[I].PointB);
+    PairsRel[I].A := FCalib.PixelToWorld(FLayout.Pairs[I].PointA);
+    PairsRel[I].B := FCalib.PixelToWorld(FLayout.Pairs[I].PointB);
+    PairsRel[I].UserChannel := FLayout.Pairs[I].ChannelIndex;
+    Pairs[I].A := RelativeToCm(PairsRel[I].A, FLayout);
+    Pairs[I].B := RelativeToCm(PairsRel[I].B, FLayout);
     Pairs[I].UserChannel := FLayout.Pairs[I].ChannelIndex;
   end;
 
   Res := LocalizeSingleEvent(FLastLiveEvent, Pairs, FOrientation,
-    1, 1, 1.5, 5);
+    TankW, TankH, 1.5, 5);
+  ResPosRel := CmToRelative(Res.Position, FLayout);
 
-  if Res.Converged and InsideTank(Res.Position) then
+  if Res.Converged and InsideTank(ResPosRel) then
   begin
     FHasLivePosition := True;
-    FLivePosition := Res.Position;
+    FLivePosition := ResPosRel;
     FLiveFrame := Res.Frame;
-    AppendTrail(Res.Position);
+    AppendTrail(ResPosRel);
     FLiveInfo.Text := Format(
       'Живой маркер: событие #%d, RMS %.3f', [FLiveFrame, Res.ResidualRMS]);
     FLiveInfo.Text := FLiveInfo.Text + #10 +
-      DiagnosticText(FLastLiveEvent, Res.Position, Pairs);
+      DiagnosticText(FLastLiveEvent, ResPosRel, PairsRel);
   end
   else
   begin
@@ -1555,14 +1731,15 @@ begin
           Signs[C] := 1;
 
       Cand := LocalizeSingleEvent(FLastLiveEvent, Pairs, Signs,
-        1, 1, 1.5, 5);
-      if Cand.Converged and InsideTank(Cand.Position) then
+        TankW, TankH, 1.5, 5);
+      if Cand.Converged and
+         InsideTank(CmToRelative(Cand.Position, FLayout)) then
         if (not FoundInside) or (Cand.ResidualRMS < BestRMS) then
         begin
           FoundInside := True;
           BestRMS := Cand.ResidualRMS;
           BestSigns := Signs;
-          BestPos := Cand.Position;
+          BestPos := CmToRelative(Cand.Position, FLayout);
           BestFrame := Cand.Frame;
         end;
     end;
@@ -1614,8 +1791,9 @@ end;
 procedure TElectrodeLayoutForm.UpdateStatus;
 begin
   FStatusLabel.Text := Format(
-    'Углы аквариума: %d/4.  Пар электродов указано: %d/%d.  Отметок рыбы: %d.',
-    [FCornersPlaced, Length(FLayout.Pairs), EodChannelCount, Length(FLayout.FishMarks)]);
+    'Углы аквариума: %d/4.  Пар электродов указано: %d/%d.  Отметок рыбы: %d.  Истинных позиций: %d.',
+    [FCornersPlaced, Length(FLayout.Pairs), EodChannelCount,
+     Length(FLayout.FishMarks), Length(FTruthMarks)]);
 
   case FMode of
     limCorners:
@@ -1634,6 +1812,9 @@ begin
         FInstructionLabel.Text := 'Кликните хвост той же рыбы.'
       else
         FInstructionLabel.Text := 'Кликните голову рыбы.';
+    limTruth:
+      FInstructionLabel.Text :=
+        'Кликните по кадру в том месте, где находится рыба. Метка сохранится с амплитудами текущего события (если курсор/плейхед стоит на пике).';
   else
     FInstructionLabel.Text :=
       'Выберите действие: "Указать углы аквариума", "Добавить пару электродов" или "Отметить рыбу".';

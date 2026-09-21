@@ -70,12 +70,20 @@ type
       const ChannelMin, ChannelMax: TChannelEnvelopes;
       TotalFrames: Int64; Canceled: Boolean;
       const ErrorText: string);
-    procedure PeakOverviewProgress(Sender: TObject; Processed, Total: Int64);
-    procedure PeakOverviewFinished(Sender: TObject;
+      procedure PeakOverviewFinished(Sender: TObject;
       const OverviewMin, OverviewMax: TFloatArray;
       const ChannelMin, ChannelMax: TChannelEnvelopes;
       TotalFrames: Int64; Canceled: Boolean;
       const ErrorText: string);
+
+
+    { Общая часть обработчиков завершения обоих обзоров. }
+    function OverviewOutcomeHandled(Canceled: Boolean;
+      const ErrorText, CancelText, ErrorPrefix: string): Boolean;
+    procedure StoreAndShowOverview(
+      const OverviewMin, OverviewMax: TFloatArray;
+      const ChannelMin, ChannelMax: TChannelEnvelopes;
+      TotalFrames: Int64);
 
     procedure StartWavOverview;
     procedure StartPeakOverviewThread(const AFileName: string;
@@ -297,7 +305,8 @@ begin
 
   FPeakOverviewThread := TEodPeakOverviewThread.Create(AFileName, 2000);
   FPeakOverviewThread.SpreadBuckets := ASpreadBuckets;
-  FPeakOverviewThread.OnProgress := PeakOverviewProgress;
+    { Прогресс у обоих обзоров одинаковый. }
+  FPeakOverviewThread.OnProgress := OverviewProgress;
   FPeakOverviewThread.OnFinished := PeakOverviewFinished;
   FPeakOverviewThread.OnTerminate := PeakOverviewTerminated;
   FPeakOverviewThread.Start;
@@ -324,6 +333,57 @@ begin
   Status(Format('Building overview: %d%%', [Percent]));
 end;
 
+{ Общая часть обработчиков завершения: закрытие формы, отмена, ошибка.
+  Возвращает True, если результат применять не нужно — статус отмены или
+  ошибки уже показан (либо форма закрывается и статус не нужен). Тексты
+  статусов у обзора WAV и обзора EODPK разные, поэтому приходят параметрами. }
+function TEodOverviewController.OverviewOutcomeHandled(Canceled: Boolean;
+  const ErrorText, CancelText, ErrorPrefix: string): Boolean;
+begin
+  Result := True;
+
+  if FClosing then
+    Exit;
+
+  if Canceled then
+  begin
+    Status(CancelText);
+    Exit;
+  end;
+
+  if ErrorText <> '' then
+  begin
+    Status(ErrorPrefix + ErrorText);
+    Exit;
+  end;
+
+  Result := False;
+end;
+
+{ Сохраняет готовые огибающие и отдаёт их графику. Вид (красный
+  прямоугольник) здесь не трогаем: у обзора WAV и обзора EODPK он
+  выставляется по-разному, см. обработчики завершения. }
+procedure TEodOverviewController.StoreAndShowOverview(
+  const OverviewMin, OverviewMax: TFloatArray;
+  const ChannelMin, ChannelMax: TChannelEnvelopes;
+  TotalFrames: Int64);
+begin
+  FOverviewMin := Copy(OverviewMin);
+  FOverviewMax := Copy(OverviewMax);
+  FOverviewChMin := ChannelMin;
+  FOverviewChMax := ChannelMax;
+
+  { Для WAV эта проверка всегда истинна (поток сам бросает ошибку при
+    TotalFrames <= 0 и строит минимум один бин); для EODPK она защищает
+    от пустого результата. }
+  if (TotalFrames <= 0) or (Length(FOverviewMin) = 0) then
+    Exit;
+
+  FOverview.SetData(FOverviewMin, FOverviewMax, 0, TotalFrames - 1);
+  FOverview.SetChannelData(FOverviewChMin, FOverviewChMax, 0,
+    TotalFrames - 1);
+end;
+
 procedure TEodOverviewController.OverviewFinished(Sender: TObject;
   const OverviewMin, OverviewMax: TFloatArray;
   const ChannelMin, ChannelMax: TChannelEnvelopes;
@@ -332,38 +392,15 @@ procedure TEodOverviewController.OverviewFinished(Sender: TObject;
 var
   InitialWidth: Int64;
 begin
-  if FClosing then
+  if OverviewOutcomeHandled(Canceled, ErrorText,
+    'Overview building cancelled.', 'Overview error: ') then
     Exit;
 
-  if Canceled then
-  begin
-    Status('Overview building cancelled.');
-    Exit;
-  end;
+  StoreAndShowOverview(OverviewMin, OverviewMax, ChannelMin, ChannelMax,
+    TotalFrames);
 
-  if ErrorText <> '' then
-  begin
-    Status('Overview error: ' + ErrorText);
-    Exit;
-  end;
-
-  FOverviewMin := Copy(OverviewMin);
-  FOverviewMax := Copy(OverviewMax);
-  FOverviewChMin := ChannelMin;
-  FOverviewChMax := ChannelMax;
-
-  FOverview.SetData(
-    FOverviewMin,
-    FOverviewMax,
-    0,
-    TotalFrames - 1);
-
-  FOverview.SetChannelData(
-    FOverviewChMin,
-    FOverviewChMax,
-    0,
-    TotalFrames - 1);
-
+  { Особенность обзора WAV: вида ещё нет, поэтому начальный красный
+    прямоугольник — от нуля шириной текущего вида основного графика. }
   InitialWidth := 0;
   if Assigned(FViewWidthFunc) then
     InitialWidth := FViewWidthFunc();
@@ -382,79 +419,31 @@ begin
        FSession.TotalFrames]));
 end;
 
-procedure TEodOverviewController.PeakOverviewProgress(Sender: TObject;
-  Processed, Total: Int64);
-var
-  Percent: Integer;
-begin
-  if FClosing then
-    Exit;
-
-  if Total > 0 then
-    Percent := Round(Processed * 100.0 / Total)
-  else
-    Percent := 0;
-
-  if Percent < 0 then
-    Percent := 0
-  else if Percent > 100 then
-    Percent := 100;
-
-  Status(Format('Building overview: %d%%', [Percent]));
-end;
-
 procedure TEodOverviewController.PeakOverviewFinished(Sender: TObject;
   const OverviewMin, OverviewMax: TFloatArray;
   const ChannelMin, ChannelMax: TChannelEnvelopes;
   TotalFrames: Int64; Canceled: Boolean;
   const ErrorText: string);
-var
-  I: Integer;
 begin
-  if FClosing then
+  if OverviewOutcomeHandled(Canceled, ErrorText,
+    'EODPK overview cancelled.', 'EODPK overview error: ') then
     Exit;
 
-  if Canceled then
-  begin
-    Status('EODPK overview cancelled.');
-    Exit;
-  end;
+  StoreAndShowOverview(OverviewMin, OverviewMax, ChannelMin, ChannelMax,
+    TotalFrames);
 
-  if ErrorText <> '' then
-  begin
-    Status('EODPK overview error: ' + ErrorText);
-    Exit;
-  end;
-
-  FOverviewMin := OverviewMin;
-  FOverviewMax := OverviewMax;
-
-  for I := 0 to 3 do
-  begin
-    FOverviewChMin[I] := ChannelMin[I];
-    FOverviewChMax[I] := ChannelMax[I];
-  end;
-
+  { Особенность обзора EODPK: пока строился обзор, форма уже выставила вид
+    (первый пик, клик, диапазон) — восстанавливаем запомненный. }
   if (TotalFrames > 0) and (Length(FOverviewMin) > 0) then
-  begin
-    FOverview.SetData(
-      FOverviewMin,
-      FOverviewMax,
-      0,
-      TotalFrames - 1);
-
-    FOverview.SetChannelData(
-      FOverviewChMin,
-      FOverviewChMax,
-      0,
-      TotalFrames - 1);
-
     FOverview.SetViewRange(FViewStart, FViewEnd);
-  end;
 
   ApplyOverviewLook;
 
-  if (TotalFrames > 0) and (Length(FOverviewMin) > 0) then
+  { Весь файл показываем только как запасной вариант, если вид никто не
+    задавал. Раньше этот вызов был безусловным и после построения обзора
+    затирал вид, выставленный формой. }
+  if (TotalFrames > 0) and (Length(FOverviewMin) > 0) and
+     (FViewEnd <= FViewStart) then
     SetViewRange(0, TotalFrames - 1);
 
   Status(Format('EODPK overview ready: %d frames', [TotalFrames]));

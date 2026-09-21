@@ -256,7 +256,10 @@
         <DCCReference Include="Electrode.LayoutForm.pas"/>
         <DCCReference Include="Electrode.Layout.pas"/>
         <DCCReference Include="Electrode.Localization.pas"/>
+        <DCCReference Include="Electrode.Matching.pas"/>
+        <DCCReference Include="Electrode.Amplitudes.pas"/>
         <DCCReference Include="Electrode.Geometry.pas"/>
+        <DCCReference Include="Electrode.Settings.pas"/>
         <DCCReference Include="GUI.VideoExportForm.pas"/>
         <DCCReference Include="Threads.VideoExport.pas"/>
         <DCCReference Include="Video.FfmpegExport.pas"/>
@@ -264,6 +267,7 @@
         <DCCReference Include="Video.OverlayRenderer.pas"/>
         <DCCReference Include="Threads.Base.pas"/>
         <DCCReference Include="GUI.ViewController.pas"/>
+        <DCCReference Include="Threads.OverviewBase.pas"/>
         <None Include="TODO.md"/>
         <None Include="AGENTS.md"/>
         <None Include="HISTORY.md"/>

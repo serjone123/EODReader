@@ -1,15 +1,16 @@
-unit GUI.ViewController;
+﻿unit GUI.ViewController;
 
-{ ����� ������ �� �������� �������: ���� ���, ������������ �������� WAV,
-  �������� �� .eodpk (����� ��� ��� ���������). �������� �� TMainForm.
+{ Показ данных на основном графике: один пик, произвольный диапазон
+  (WAV — сырой вид; .eodpk — сырой вид малого диапазона или огибающая
+  большого), текущий пик, переходы Prev/Next. Вынесено из TMainForm.
 
-  ����� �� ������� �� ����� ��������, ������� ��� �������� (������,
-  ���������� ������, ������ �����): �� ������ � ����������� �����.
-  ������ � �������� � ����� ����������� (�������� WAV, ����� ��������),
-  ������� ��� �������� ���������� Session � Detector.
+  Класс не владеет тем, что показывает (график, обзор, список пиков):
+  их создаёт форма и передаёт в конструктор. Сессия и детектор берутся
+  из свойств Session и Detector — форма обновляет их при смене сессии
+  и настроек.
 
-  ����� �������� �� ������ ��� �����������: ���������� ��������
-  (OnRangeChanged � ��� ����� �����) � ����� ������� (OnStatus). }
+  Наружу класс сообщает две вещи: изменился показанный диапазон
+  (OnRangeChanged) и текст для строки состояния (OnStatus). }
 
 interface
 
@@ -34,14 +35,14 @@ type
     FOnStatus: TEodViewStatusEvent;
 
     FPlotMode: TPlotMode;
-    FCurrentPeak: Integer;   // ������ ����������� ����, -1 � ��� �� ������
-    FCurrentCount: Integer;  // ����� ������ � ��������� ���������� ���������
+    FCurrentPeak: Integer;   // индекс показанного пика, -1 — ещё не выбран
+    FCurrentCount: Integer;  // число кадров в последнем показанном диапазоне
 
     procedure Status(const S: string);
     procedure RangeChanged(AStart, AEnd: Int64);
     function Playing: Boolean;
     procedure SetPlotMode(AValue: TPlotMode);
-procedure ShowRawPosition(AStartFrame, AEndFrame: Int64);
+    procedure ShowRawPosition(AStartFrame, AEndFrame: Int64);
     procedure ShowPeakFileRange(AStartFrame, AEndFrame: Int64);
     procedure UpdateCurrentPeakForView(AStartFrame: Int64);
   public
@@ -50,16 +51,15 @@ procedure ShowRawPosition(AStartFrame, AEndFrame: Int64);
       APeakList: TEodPeakList; const AIsPlaying: TFunc<Boolean>;
       AOnRangeChanged: TEodViewRangeEvent; AOnStatus: TEodViewStatusEvent);
 
-    { ����� ���� �� ������� (���� ������ ����). }
+    { Показ пика по индексу (для WAV окно читается из записи). }
     procedure ShowPeak(Index: Integer);
     procedure NextPeak;
     procedure PrevPeak;
 
-    { ����� ������������� ���������; ��� (WAV / EODPK) ���������� ��
-      ������ ������. � ������ dmNone ������ �� ������. }
+    { Показ произвольного диапазона; вид (WAV или EODPK) зависит от режима сессии. В режиме dmNone ничего не делает. }
     procedure ShowRange(AStart, AEnd: Int64);
 
-    { ����� ��������� ��� �������� ����� ������. }
+    { Сброс состояния при открытии новой записи. }
     procedure Reset;
 
     property Session: TEodGuiSession read FSession write FSession;
@@ -243,18 +243,17 @@ begin
   FPlot.SetMode(FPlotMode);
   FPlot.SetViewRange(StartFrame, EndFrame);
 
-  { �������������� ������� ������������� ��������� �� �������� �������
-    � ����� ���������� �����������. SetViewRange �� �������� OnViewChanged,
-    ������� ��������� ����� �������. }
+  { Красный прямоугольник обзора ставим по показанному пику. SetViewRange
+    графика не вызывает OnViewChanged, поэтому обзор обновляем явно. }
   FOverview.SetViewRange(StartFrame, EndFrame);
 
   Status(Format('Peak %d/%d: sample %d, time %.6f s, prominence %.6f',
     [Index + 1, FSession.PeakCount, Peak.Position,
     Peak.Position / FSession.SampleRate, Peak.Prominence]));
 
-  { �� ����� ��������������� ������ �� �������: ���������� �� ������ ���
-    �������� ����; ��� ��������� ������ ���������������� ���� ���
-    (������ ��������� ������ � �����). }
+  { Во время воспроизведения список пиков не перестраиваем: подсветка прыгала
+    бы на каждом пике. После остановки плеера форма синхронизирует список один
+    раз. }
   if not Playing then
     FPeakList.FillAroundFrame(Peak.Position);
 end;
@@ -293,8 +292,7 @@ begin
 
   FPlot.SetFir(Fir, StartFrame, FSession.SampleRate, -1, 'FIR15');
 
-  { ���� � ��������� � �������� �������, � �� �������� �� ���� �����
-    ������ (����� ���������� �� ������ ��� ����/��������). }
+  { Пики берём только из видимого диапазона, а не проходом по всему списку: иначе каждый шаг зума или панорамы читал бы все пики. }
   N := 0;
   SetLength(PeakPositions, 0);
   if FSession.FindPeakRangeIndices(StartFrame, EndFrame, 0, FirstIdx, LastIdx) then
@@ -310,7 +308,7 @@ begin
   FPlot.SetViewRange(StartFrame, EndFrame);
   FPlot.SetHistogramRange(StartFrame, EndFrame);
 
-RangeChanged(StartFrame, EndFrame);
+  RangeChanged(StartFrame, EndFrame);
   UpdateCurrentPeakForView(StartFrame);
 
   if N <= 1000 then
@@ -342,13 +340,12 @@ begin
   if FSession.TotalFrames <= 0 then
     Exit;
 
-StartFrame := EnsureRange(AStartFrame, Int64(0), FSession.TotalFrames - 1);
+  StartFrame := EnsureRange(AStartFrame, Int64(0), FSession.TotalFrames - 1);
   EndFrame := EnsureRange(AEndFrame, StartFrame, FSession.TotalFrames - 1);
 
   UpdateCurrentPeakForView(StartFrame);
 
-  { ����� �������� � ��������� ������ ���� �����: ������ ��� �������.
-    ������� RawLimit � �������� GUI, �� �������. }
+  { Малый диапазон рисуем точно: сырой сигнал из окон пиков. Порог RawLimit — политика GUI, а не формата. }
   if FSession.TryReadPeakFileRawRange(StartFrame, EndFrame,
     RawLimit, RawLimit, Data) then
   begin
@@ -369,7 +366,7 @@ StartFrame := EnsureRange(AStartFrame, Int64(0), FSession.TotalFrames - 1);
     Exit;
   end;
 
-  { ������� ��������: TAudioChunk ��� �������� �� ������ �������. }
+  { Большой диапазон рисуем огибающей: полный TAudioChunk для него не создаётся. }
   if not FSession.ReadPeakEnvelope(StartFrame, EndFrame, MaxEnvelopePoints,
     Envelope) then
   begin
@@ -384,7 +381,7 @@ StartFrame := EnsureRange(AStartFrame, Int64(0), FSession.TotalFrames - 1);
   FPlot.SetViewRange(StartFrame, EndFrame);
   FPlot.SetHistogramRange(StartFrame, EndFrame);
 
-  { STD/FIR ����� ������������ ��� �������������� ������ �������. }
+  { STD и FIR считаются только по восстановленному сырому сигналу, поэтому для огибающей их очищаем. }
   FPlot.SetStd(nil, StartFrame, FSession.SampleRate, -1, 'STD');
   FPlot.SetFir(nil, StartFrame, FSession.SampleRate, -1, 'FIR15');
 

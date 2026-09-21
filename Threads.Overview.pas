@@ -3,40 +3,21 @@
 interface
 
 uses
-  System.Classes, System.SysUtils, System.SyncObjs,
-  Core.Types, IO.AudioSource, Threads.Base;
+  System.Classes, System.SysUtils,
+  Core.Types, IO.AudioSource, Threads.OverviewBase;
 
 type
-  TOverviewProgressEvent = procedure(Sender: TObject; Processed, Total: Int64) of object;
-  TOverviewFinishedEvent = procedure(Sender: TObject;
-    const OverviewMin, OverviewMax: TFloatArray;
-    const ChannelMin, ChannelMax: TChannelEnvelopes;
-    TotalFrames: Int64; Canceled: Boolean;
-    const ErrorText: string) of object;
-
-  { Построение обзорной огибающей WAV. Отмену, тексты ошибок и вызов
-    DoFinished (в главном потоке) обеспечивает TEodBackgroundThread. }
-  TEodOverviewThread = class(TEodBackgroundThread)
+  { Построение обзорной огибающей WAV: полный проход по записи чанками.
+    Общий каркас (поля результата, события, DoProgress/DoFinished) — в
+    TEodOverviewBaseThread; здесь остаются имена двух WAV и сам расчёт. }
+  TEodOverviewThread = class(TEodOverviewBaseThread)
   private
     FFile1: string;
     FFile2: string;
-    FPoints: Integer;
-    FOverviewMin: TFloatArray;
-    FOverviewMax: TFloatArray;
-    FChannelMin: TChannelEnvelopes;
-    FChannelMax: TChannelEnvelopes;
-    FTotalFrames: Int64;
-    FProcessed: Int64;
-    FOnProgress: TOverviewProgressEvent;
-    FOnFinished: TOverviewFinishedEvent;
   protected
     procedure RunTask; override;
-    procedure DoProgress; override;
-    procedure DoFinished; override;
   public
     constructor Create(const AFile1, AFile2: string; APoints: Integer = 2000);
-    property OnProgress: TOverviewProgressEvent read FOnProgress write FOnProgress;
-    property OnFinished: TOverviewFinishedEvent read FOnFinished write FOnFinished;
   end;
 
 implementation
@@ -44,25 +25,9 @@ implementation
 constructor TEodOverviewThread.Create(const AFile1, AFile2: string;
   APoints: Integer);
 begin
-  inherited Create;
+  inherited Create(APoints);
   FFile1 := AFile1;
   FFile2 := AFile2;
-  FPoints := APoints;
-  if FPoints < 1 then
-    FPoints := 1;
-end;
-
-procedure TEodOverviewThread.DoProgress;
-begin
-  if Assigned(FOnProgress) then
-    FOnProgress(Self, FProcessed, FTotalFrames);
-end;
-
-procedure TEodOverviewThread.DoFinished;
-begin
-  if Assigned(FOnFinished) then
-    FOnFinished(Self, FOverviewMin, FOverviewMax,
-      FChannelMin, FChannelMax, FTotalFrames, FCanceled, FErrorText);
 end;
 
 procedure TEodOverviewThread.RunTask;
@@ -84,15 +49,7 @@ var
   PercentStep: Int64;
   NextProgress: Int64;
 begin
-  FTotalFrames := 0;
-  FProcessed := 0;
-  SetLength(FOverviewMin, 0);
-  SetLength(FOverviewMax, 0);
-  for Ch := 0 to 3 do
-  begin
-    SetLength(FChannelMin[Ch], 0);
-    SetLength(FChannelMax[Ch], 0);
-  end;
+  ResetResult;
 
   Source := nil;
   try

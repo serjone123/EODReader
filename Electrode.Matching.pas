@@ -235,7 +235,11 @@ begin
       Res := ALocalizer.LocalizeMultiStart(Amps, TankWidth, TankHeight,
         GridSize);
       if Res.Converged then
-        if IsPositionInsideTank(Res.Position) then
+        { Res.Position в тех же единицах, что TankWidth/TankHeight (у нас -
+          сантиметры), а IsPositionInsideTank проверяет относительные 0..1 -
+          поэтому переводим. }
+        if IsPositionInsideTank(TPoint2D.Create(Res.Position.X / TankWidth,
+          Res.Position.Y / TankHeight)) then
           Total := Total + Res.ResidualRMS
         else
           Total := Total + OutOfTankPenalty
