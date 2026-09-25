@@ -81,6 +81,9 @@ type
     ExtractionAfter: Integer;
     ChunkSize: Integer;
     DuplicateDistance: Int64;
+    { При клике по обзору переводить вид к ближайшему пику, а не к точке
+      клика. По умолчанию включено (настраивается в config.json). }
+    OverviewSnapToPeak: Boolean;
   end;
 
 function DefaultEodDetectorConfig: TEodDetectorConfig;
@@ -103,6 +106,7 @@ begin
   Result.ExtractionAfter := 30;
   Result.ChunkSize := 65536;
   Result.DuplicateDistance := 5;
+  Result.OverviewSnapToPeak := True;
 end;
 
 function FishTypeToString(AType: TFishType): string;

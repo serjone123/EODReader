@@ -35,6 +35,7 @@ var
   Text: string;
   JV: TJSONValue;
   JO: TJSONObject;
+  JB: TJSONBool;
   DValue: Double;
   IValue: Integer;
   I64Value: Int64;
@@ -81,6 +82,9 @@ begin
     if JO.TryGetValue<Int64>('DuplicateDistance', I64Value) then
       Config.DuplicateDistance := I64Value;
 
+    if JO.TryGetValue<TJSONBool>('OverviewSnapToPeak', JB) then
+      Config.OverviewSnapToPeak := JB.AsBoolean;
+
     { Basic sanity checks. If the file is corrupted/hand-edited into
       something nonsensical, fall back silently to safe defaults for
       the offending fields rather than let the detector misbehave. }
@@ -114,6 +118,7 @@ begin
     JO.AddPair('ExtractionAfter', TJSONNumber.Create(Config.ExtractionAfter));
     JO.AddPair('ChunkSize', TJSONNumber.Create(Config.ChunkSize));
     JO.AddPair('DuplicateDistance', TJSONNumber.Create(Config.DuplicateDistance));
+    JO.AddPair('OverviewSnapToPeak', TJSONBool.Create(Config.OverviewSnapToPeak));
 
     TFile.WriteAllText(FileName, JO.Format(2), TEncoding.UTF8);
   finally

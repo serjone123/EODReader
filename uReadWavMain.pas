@@ -1063,6 +1063,12 @@ begin
   if FSession.TotalFrames <= 0 then
     Exit;
 
+  { Привязка к ближайшему пику: клик по пустому месту обзора всё равно
+    приводит к пику. Иначе вид уезжает в промежуток, ListBox пиков остаётся
+    без выделения, а сохранение метки/события даёт нулевые амплитуды. }
+  if FConfig.OverviewSnapToPeak and (FSession.PeakCount > 0) then
+    Frame := FSession.GetPeakPosition(FindNearestPeakIndex(Frame));
+
   ViewWidth := FPlot.ViewSampleCount;
   if ViewWidth <= 0 then
     ViewWidth := FView.CurrentCount;
