@@ -228,10 +228,12 @@
             <FormType>fmx</FormType>
         </DCCReference>
         <DCCReference Include="Core.Types.pas"/>
+ <DCCReference Include="Core.Log.pas"/>
         <DCCReference Include="IO.WavReader.pas"/>
         <DCCReference Include="Signal.Fir15.pas"/>
         <DCCReference Include="Detection.Correlation.pas"/>
         <DCCReference Include="Signal.Peaks.pas"/>
+        <DCCReference Include="Detection.ProminenceCache.pas"/>
         <DCCReference Include="Signal.Statistics.pas"/>
         <DCCReference Include="Detection.Templates.pas"/>
         <DCCReference Include="IO.AudioSource.pas"/>

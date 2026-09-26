@@ -101,6 +101,7 @@ type
 
     procedure StartOverview;
     procedure StartPeakOverview(const AFileName: string; ASpreadBuckets: Boolean);
+    procedure ClearOverview;
     procedure CancelAll;
     procedure SetViewRange(AViewStart, AViewEnd: Int64);
     procedure SetOverviewLook(ALookIndex: Integer);
@@ -230,6 +231,24 @@ begin
     FOnRangeSelected(Self, AStart, AEnd);
 end;
 
+procedure TEodOverviewController.ClearOverview;
+var
+  Ch: Integer;
+begin
+  if Assigned(FOverviewThread) then
+    FOverviewThread.Cancel;
+  if Assigned(FPeakOverviewThread) then
+    FPeakOverviewThread.Cancel;
+  FOverviewMin := nil;
+  FOverviewMax := nil;
+  for Ch := 0 to 3 do
+  begin
+    FOverviewChMin[Ch] := nil;
+    FOverviewChMax[Ch] := nil;
+  end;
+  FOverview.Clear;
+end;
+
 procedure TEodOverviewController.StartOverview;
 begin
   if FClosing then
@@ -262,17 +281,9 @@ end;
 
 procedure TEodOverviewController.StartWavOverview;
 begin
-  FOverview.Clear;
+  ClearOverview;
 
   Status('Building overview in background...');
-
-  { Предыдущий обзор (если остался) отменяем — так же поступала форма. }
-  if Assigned(FOverviewThread) then
-    FOverviewThread.Cancel;
-
-  { Обзор EODPK от предыдущей сессии тоже больше не нужен. }
-  if Assigned(FPeakOverviewThread) then
-    FPeakOverviewThread.Cancel;
 
   FOverviewThread := TEodOverviewThread.Create(FSession.File1, FSession.File2);
   FOverviewThread.OnProgress := OverviewProgress;
@@ -283,25 +294,10 @@ end;
 
 procedure TEodOverviewController.StartPeakOverviewThread(const AFileName: string;
   ASpreadBuckets: Boolean);
-var
-  Ch: Integer;
 begin
-  FOverviewMin := nil;
-  FOverviewMax := nil;
-
-  for Ch := 0 to 3 do
-  begin
-    FOverviewChMin[Ch] := nil;
-    FOverviewChMax[Ch] := nil;
-  end;
-
-  FOverview.Clear;
+  ClearOverview;
 
   Status('Building EODPK overview...');
-
-  { Предыдущий расчёт (например, при смене режима бакетов) отменяем. }
-  if Assigned(FPeakOverviewThread) then
-    FPeakOverviewThread.Cancel;
 
   FPeakOverviewThread := TEodPeakOverviewThread.Create(AFileName, 2000);
   FPeakOverviewThread.SpreadBuckets := ASpreadBuckets;
@@ -317,7 +313,8 @@ procedure TEodOverviewController.OverviewProgress(Sender: TObject;
 var
   Percent: Integer;
 begin
-  if FClosing then
+  if FClosing or ((Sender <> FOverviewThread) and
+    (Sender <> FPeakOverviewThread)) then
     Exit;
 
   if Total > 0 then
@@ -392,6 +389,8 @@ procedure TEodOverviewController.OverviewFinished(Sender: TObject;
 var
   InitialWidth: Int64;
 begin
+  if FOverviewThread <> Sender then
+    Exit;
   if OverviewOutcomeHandled(Canceled, ErrorText,
     'Overview building cancelled.', 'Overview error: ') then
     Exit;
@@ -425,6 +424,8 @@ procedure TEodOverviewController.PeakOverviewFinished(Sender: TObject;
   TotalFrames: Int64; Canceled: Boolean;
   const ErrorText: string);
 begin
+  if FPeakOverviewThread <> Sender then
+    Exit;
   if OverviewOutcomeHandled(Canceled, ErrorText,
     'EODPK overview cancelled.', 'EODPK overview error: ') then
     Exit;

@@ -204,7 +204,7 @@ end;
 
 procedure TEodGuiSession.SetPeaks(const APeaks: TPeakArray);
 begin
-  FPeaks := Copy(APeaks);
+  FPeaks := APeaks;
 end;
 
 function TEodGuiSession.ReadSegment(StartFrame: Int64; Count: Integer; Pad: Boolean): TAudioChunk;

@@ -1,5 +1,15 @@
 ﻿unit Detection.Detector;
 
+{ Колбэки прогресса/отмены — обычные методы этого класса (см. FProgress),
+  а не вложенные процедуры AnalyzePeaks. Вложенная процедура читает
+  локальные переменные внешнего метода по цепочке кадров стека; когда её
+  вызывают через указатель на процедуру из другого модуля, расстояние до
+  кадра внешнего метода больше одного, и в оптимизированной сборке
+  (инлайн ReportProgress в обёртку) смещение вычислялось неверно —
+  вызов AProgress падал в access violation, причём отладчик показывал
+  неверный кадр и неверные аргументы. }
+{$INLINE OFF}
+
 interface
 
 uses
@@ -14,6 +24,16 @@ type
   TEodDetector = class
   private
     FConfig: TEodDetectorConfig;
+    FProgress: TDetectorProgressEvent;
+    FCancel: TDetectorCancelEvent;
+    FProgressTotal: Int64;
+    FLastProgress: Int64;
+    procedure ReportStage(AStage, AStageSize: Integer;
+      AProcessed, AStageTotal: Int64);
+    procedure ReportFinal;
+    procedure RightMinProgress(AProcessed, AStageTotal: Int64);
+    procedure PeaksProgress(AProcessed, AStageTotal: Int64);
+    function Canceled: Boolean;
   public
     constructor Create(const AConfig: TEodDetectorConfig);
     function Analyze(const File1, File2: string): TEodEventArray;
@@ -29,9 +49,11 @@ type
 implementation
 
 uses
-  System.SysUtils, System.Math, System.Generics.Defaults, System.Generics.Collections,
-  IO.AudioSource, Signal.Statistics, Signal.Fir15,
-  Signal.Peaks, Detection.Classifier;
+  System.SysUtils, System.Math, System.IOUtils, System.Generics.Defaults,
+  System.Generics.Collections,
+  Core.Log,
+  IO.AudioSource, IO.SignalCache, Signal.Statistics, Signal.Fir15,
+  Detection.ProminenceCache, Detection.Classifier;
 
 const
   { TFir15.Process only produces valid output for indices
@@ -120,104 +142,271 @@ constructor TEodDetector.Create(const AConfig: TEodDetectorConfig);
 begin
   inherited Create;
   FConfig := AConfig;
+  FLastProgress := -1;
+end;
+
+procedure TEodDetector.ReportStage(AStage, AStageSize: Integer;
+  AProcessed, AStageTotal: Int64);
+var
+  Value: Int64;
+begin
+  if not Assigned(FProgress) or (AStageTotal <= 0) then
+    Exit;
+  Value := AStage + Round(AProcessed * (AStageSize / AStageTotal));
+  { Прогресс — это блокирующий Synchronize в главный поток. Шлём его
+    только когда изменился целый процент: иначе на записи в сотни
+    миллионов кадров получаем десятки тысяч холостых переключений. }
+  if Value = FLastProgress then
+    Exit;
+  FLastProgress := Value;
+  { Наружу отдаём именно кадры, а не шкалу 0..100: иначе статус в UI
+    делит «проценты» на Total кадров и показывает 0%. }
+  LogWriteFmt('прогресс %d%% (%d из %d кадров)',
+    [Value, (Value * FProgressTotal) div 100, FProgressTotal]);
+  try
+    FProgress(Self, (Value * FProgressTotal) div 100, FProgressTotal);
+  except
+    on E: EAbort do
+      raise;
+    on E: Exception do
+    begin
+      { Обратная связь — украшение: поломка статусной строки не должна
+        срывать многочасовой анализ. Пишем в журнал (там будет точный
+        адрес обращения) и отключаем прогресс до конца запуска. }
+      LogWriteFmt('обратная связь прогресса ОТКЛЮЧЕНА на стадии %d%% (%d из %d): %s: %s',
+        [Value, (Value * FProgressTotal) div 100, FProgressTotal,
+         E.ClassName, E.Message]);
+      FProgress := nil;
+    end;
+  end;
+end;
+
+procedure TEodDetector.ReportFinal;
+begin
+  if not Assigned(FProgress) or (FProgressTotal <= 0) or Canceled then
+    Exit;
+  try
+    FProgress(Self, FProgressTotal, FProgressTotal);
+  except
+    on E: EAbort do
+      raise;
+    on E: Exception do
+      LogWriteFmt('финальный прогресс не доставлен: %s: %s',
+        [E.ClassName, E.Message]);
+  end;
+end;
+
+procedure TEodDetector.RightMinProgress(AProcessed, AStageTotal: Int64);
+begin
+  ReportStage(40, 30, AProcessed, AStageTotal);
+end;
+
+procedure TEodDetector.PeaksProgress(AProcessed, AStageTotal: Int64);
+begin
+  ReportStage(70, 30, AProcessed, AStageTotal);
+end;
+
+function TEodDetector.Canceled: Boolean;
+begin
+  Result := Assigned(FCancel) and FCancel(Self);
 end;
 
 function TEodDetector.AnalyzePeaks(const File1, File2: string; MaxFrames: Int64;
   AProgress: TDetectorProgressEvent; ACancel: TDetectorCancelEvent): TPeakArray;
 var
   Source: TFourChannelAudioSource;
+  FilteredCache, RightMinCache: TFloatSignalCache;
   Fir: TFir15;
-  Std, Filtered: TFloatArray;
+  Std, Filtered, CoreFiltered, FirInput: TFloatArray;
   Chunk: TAudioChunk;
-  FirInput: TFloatArray;
-  AllFiltered: TFloatArray;
-  LocalPeaks: TPeakArray;
-  Frame, N, I: Integer;
-  Total, DesiredStart, DesiredEnd: Int64;
+  Frame, Total, DesiredStart, DesiredEnd: Int64;
   ReadStart, ReadCount: Int64;
-  DestOffset, CoreIndex: Integer;
+  N, I, DestOffset, CoreIndex, BlockSize: Integer;
+  StageStart: TDateTime;
+  function FormatBytes(ABytes: Int64): string;
+  begin
+    if ABytes >= 1024 * 1024 * 1024 then
+      Result := Format('%.1f ГБ', [ABytes / (1024.0 * 1024 * 1024)])
+    else if ABytes >= 1024 * 1024 then
+      Result := Format('%.0f МБ', [ABytes / (1024.0 * 1024)])
+    else
+      Result := Format('%d Б', [ABytes]);
+  end;
+  function OpenCaches(const ADir: string; out AError: string): Boolean;
+  begin
+    Result := False;
+    AError := '';
+    try
+      FilteredCache := TFloatSignalCache.Create(ADir);
+      RightMinCache := TFloatSignalCache.Create(ADir);
+      Result := True;
+    except
+      on E: Exception do
+      begin
+        AError := E.Message;
+        FilteredCache.Free;
+        FilteredCache := nil;
+        RightMinCache.Free;
+        RightMinCache := nil;
+      end;
+    end;
+  end;
+  { Кэши кладём рядом с самим WAV: на системном диске для длинной
+    записи места может не хватить, и его конец в 32-битном процессе
+    выглядит как access violation, а не как понятная ошибка. Если
+    каталог записи не доступен для записи (например, read-only шара) —
+    откатываемся на %TEMP%. }
+  procedure PrepareCaches;
+  var
+    Dir, Err1, Err2: string;
+  begin
+    Dir := ExtractFilePath(ExpandFileName(File1));
+    if (Dir <> '') and OpenCaches(Dir, Err1) then
+      Exit;
+    if OpenCaches('', Err2) then
+      Exit;
+    if Err1 <> '' then
+      raise Exception.Create(Err1)
+    else if Err2 <> '' then
+      raise Exception.Create(Err2)
+    else
+      raise Exception.Create('Не удалось создать временный кэш сигнала');
+  end;
+  procedure CheckCacheSpace;
+  var
+    Need, FreeSpace: Int64;
+  begin
+    Need := SignalCacheRequiredBytes(Total);
+    FreeSpace := SignalCacheFreeSpace(FilteredCache.Dir);
+    if (FreeSpace >= 0) and (FreeSpace < Need) then
+      raise Exception.CreateFmt(
+        'Недостаточно места для временных кэшей: нужно %s, доступно %s (%s). ' +
+        'Освободите место на диске или перенесите запись на диск большего объёма.',
+        [FormatBytes(Need), FormatBytes(FreeSpace), FilteredCache.Dir]);
+  end;
 begin
   SetLength(Result, 0);
-  Source := TFourChannelAudioSource.Create(File1, File2);
+  Source := nil;
+  FilteredCache := nil;
+  RightMinCache := nil;
   try
+    Source := TFourChannelAudioSource.Create(File1, File2);
     Total := Source.TotalFrames;
     if (MaxFrames > 0) and (MaxFrames < Total) then
       Total := MaxFrames;
 
-    { Анализ пока целиком держит отфильтрованный сигнал в RAM (prominence
-      считается по всему интервалу; дисковый кэш — этап P1). Динамический
-      массив в Win32 адресуется через Integer, поэтому Total длиннее MaxInt
-      не поддерживается: вместо молчаливого переполнения Int64 -> Integer
-      (порча длины, отрицательный размер) пробрасываем понятную ошибку.
-      После этой проверки все сужения Int64 -> Integer ниже безопасны. }
-    if Total > MaxInt then
-      raise ERangeError.CreateFmt(
-        'Запись длиной %d кадров слишком велика для анализа в памяти ' +
-        '(лимит %d). Потоковая/чанковая обработка планируется (P1).',
-        [Total, MaxInt]);
-    SetLength(AllFiltered, Integer(Total));
+    { Один размер блока на все три стадии: иначе мелкий ChunkSize из
+      config.json даст блок в 1 отсчёт в prominence-проходах. }
+    BlockSize := FConfig.ChunkSize;
+    if (BlockSize < 1024) or (BlockSize > MaxEodChunkSize) then
+      BlockSize := 65536;
+    FProgress := AProgress;
+    FCancel := ACancel;
+    FProgressTotal := Total;
+    FLastProgress := -1;
+    StageStart := Now;
+
+    PrepareCaches;
+    CheckCacheSpace;
+    LogWriteFmt('анализ начат: %s + %s, %d кадров, блок %d, кэши в %s',
+      [ExtractFileName(File1), ExtractFileName(File2), Total, BlockSize,
+       FilteredCache.Dir]);
+    FilteredCache.Initialize(Source.SampleRate, Total);
 
     Fir := TFir15.Create;
     try
       Frame := 0;
       while Frame < Total do
       begin
-        N := FConfig.ChunkSize;
-        if Frame + N > Total then
+        N := BlockSize;
+        if Int64(N) > Total - Frame then
           N := Integer(Total - Frame);
 
-        { Read Fir15HalfWidth samples on each side of the core block so
-          FIR15 has the same neighbourhood it would have in one continuous
-          array, and so its valid output range exactly covers the N core
-          samples (see Fir15HalfWidth comment above). }
         DesiredStart := Frame - Fir15HalfWidth;
-        DesiredEnd := Frame + N + Fir15HalfWidth;
+        DesiredEnd := Frame + Int64(N) + Fir15HalfWidth;
         ReadStart := Max(0, DesiredStart);
         ReadCount := Min(Source.TotalFrames, DesiredEnd) - ReadStart;
         if ReadCount < 0 then
           ReadCount := 0;
 
-        SetLength(FirInput, N + 2 * Fir15HalfWidth);
-        for I := 0 to High(FirInput) do
-          FirInput[I] := 0;
+        try
+          SetLength(FirInput, N + 2 * Fir15HalfWidth);
+          for I := 0 to High(FirInput) do
+            FirInput[I] := 0;
 
-        if ReadCount > 0 then
-        begin
-          Source.ReadFrames(ReadStart, Integer(ReadCount), Chunk);
-          CalculateStdChunk(Chunk, Std);
-          DestOffset := Integer(ReadStart - DesiredStart);
-          for I := 0 to High(Std) do
-            FirInput[DestOffset + I] := Std[I];
+          if ReadCount > 0 then
+          begin
+            Source.ReadFrames(ReadStart, Integer(ReadCount), Chunk);
+            CalculateStdChunk(Chunk, Std);
+            DestOffset := Integer(ReadStart - DesiredStart);
+            for I := 0 to High(Std) do
+              FirInput[DestOffset + I] := Std[I];
+          end;
+
+          Fir.Process(FirInput, Filtered);
+          SetLength(CoreFiltered, N);
+          DestOffset := Integer(Frame - DesiredStart);
+          for I := 0 to N - 1 do
+          begin
+            CoreIndex := I + DestOffset;
+            CoreFiltered[I] := Filtered[CoreIndex];
+          end;
+          FilteredCache.Append(CoreFiltered);
+        except
+          on E: EAbort do
+            raise;
+          on E: Exception do
+            raise EStageError.CreateFmt(
+              'стадия 1 «STD + FIR15», кадр %d из %d: %s: %s',
+              [Frame, Total, E.ClassName, E.Message]);
         end;
-
-        Fir.Process(FirInput, Filtered);
-
-        DestOffset := Integer(Frame - DesiredStart); { = Fir15HalfWidth }
-        for I := 0 to N - 1 do
-        begin
-          CoreIndex := I + DestOffset;
-          AllFiltered[Frame + I] := Filtered[CoreIndex];
-        end;
-
         Inc(Frame, N);
-
-        if Assigned(AProgress) then
-          AProgress(Self, Frame, Total);
-        if Assigned(ACancel) and ACancel(Self) then
+        ReportStage(0, 40, Frame, Total);
+        if Canceled then
           Exit;
       end;
+      LogWriteFmt('стадия 1 «STD + FIR15» завершена за %.3f с',
+        [(Now - StageStart) * 86400]);
+      StageStart := Now;
 
-      if Assigned(ACancel) and ACancel(Self) then
+      if Canceled then
         Exit;
-
-      LocalPeaks := FindPeaksProminence(AllFiltered, FConfig.PeakProminence);
-      if Assigned(AProgress) then
-        AProgress(Self, Total, Total);
-      Result := LocalPeaks;
+      try
+        if not BuildRightMinCache(FilteredCache, RightMinCache, Total,
+          BlockSize, Self.RightMinProgress, Self.Canceled) then
+          Exit;
+      except
+        on E: EAbort do
+          raise;
+        on E: Exception do
+          raise EStageError.CreateFmt('стадия 2 «правый минимум prominence»: %s: %s',
+            [E.ClassName, E.Message]);
+      end;
+      LogWriteFmt('стадия 2 «правый минимум prominence» завершена за %.3f с',
+        [(Now - StageStart) * 86400]);
+      StageStart := Now;
+      try
+        Result := FindPeaksProminenceCached(FilteredCache, RightMinCache,
+          Total, FConfig.PeakProminence, BlockSize,
+          Self.PeaksProgress, Self.Canceled);
+      except
+        on E: EAbort do
+          raise;
+        on E: Exception do
+          raise EStageError.CreateFmt('стадия 3 «поиск пиков по prominence»: %s: %s',
+            [E.ClassName, E.Message]);
+      end;
+      LogWriteFmt('стадия 3 «поиск пиков» завершена за %.3f с, пиков %d',
+        [(Now - StageStart) * 86400, Length(Result)]);
+      ReportFinal;
     finally
       Fir.Free;
     end;
   finally
+    FProgress := nil;
+    FCancel := nil;
+    RightMinCache.Free;
+    FilteredCache.Free;
     Source.Free;
   end;
 end;

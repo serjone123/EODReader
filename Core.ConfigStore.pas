@@ -79,6 +79,9 @@ begin
     if JO.TryGetValue<Integer>('ChunkSize', IValue) then
       Config.ChunkSize := IValue;
 
+    if JO.TryGetValue<Int64>('OverviewMaxSeconds', I64Value) then
+      Config.OverviewMaxSeconds := I64Value;
+
     if JO.TryGetValue<Int64>('DuplicateDistance', I64Value) then
       Config.DuplicateDistance := I64Value;
 
@@ -89,7 +92,11 @@ begin
       something nonsensical, fall back silently to safe defaults for
       the offending fields rather than let the detector misbehave. }
     if Config.ChunkSize <= 0 then
-      Config.ChunkSize := DefaultEodDetectorConfig.ChunkSize;
+      Config.ChunkSize := DefaultEodDetectorConfig.ChunkSize
+    else if Config.ChunkSize > MaxEodChunkSize then
+      Config.ChunkSize := MaxEodChunkSize;
+    if Config.OverviewMaxSeconds < 0 then
+      Config.OverviewMaxSeconds := DefaultEodDetectorConfig.OverviewMaxSeconds;
     if Config.WindowBefore < 0 then
       Config.WindowBefore := DefaultEodDetectorConfig.WindowBefore;
     if Config.WindowAfter < 0 then
@@ -117,6 +124,7 @@ begin
     JO.AddPair('ExtractionBefore', TJSONNumber.Create(Config.ExtractionBefore));
     JO.AddPair('ExtractionAfter', TJSONNumber.Create(Config.ExtractionAfter));
     JO.AddPair('ChunkSize', TJSONNumber.Create(Config.ChunkSize));
+    JO.AddPair('OverviewMaxSeconds', TJSONNumber.Create(Config.OverviewMaxSeconds));
     JO.AddPair('DuplicateDistance', TJSONNumber.Create(Config.DuplicateDistance));
     JO.AddPair('OverviewSnapToPeak', TJSONBool.Create(Config.OverviewSnapToPeak));
 

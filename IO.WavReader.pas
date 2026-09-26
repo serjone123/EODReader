@@ -19,6 +19,7 @@ type
     FDataSize: Int64;
     FEncoding: TWavEncoding;
     FFrameCount: Int64;
+    FByteBuf: TBytes;
     procedure ParseHeader;
     function ReadUInt16: Word;
     function ReadUInt32: Cardinal;
@@ -59,6 +60,7 @@ end;
 
 destructor TWavReader.Destroy;
 begin
+  FByteBuf := nil;
   FStream.Free;
   inherited;
 end;
@@ -253,12 +255,15 @@ begin
 end;
 
 function TWavReader.ReadFrames(AFrame: Int64; ACount: Integer; ADestination: PSingle): Integer;
+type
+  PSample16 = ^SmallInt;
 var
   BytesToRead: Integer;
-  ByteBuf: TBytes;
-  FramesRead, Ch: Integer;
+  FramesRead, Ch, I: Integer;
   FramePtr: PByte;
   Dst: PSingle;
+  P: PSample16;
+  S1, S2: SmallInt;
 begin
   Result := 0;
   if ACount <= 0 then Exit;
@@ -271,12 +276,33 @@ begin
 
   SeekFrame(AFrame);
   BytesToRead := FramesRead * FBlockAlign;
-  SetLength(ByteBuf, BytesToRead);
-  FStream.ReadBuffer(ByteBuf[0], BytesToRead);
+  SetLength(FByteBuf, BytesToRead);
+  FStream.ReadBuffer(FByteBuf[0], BytesToRead);
 
   Dst := ADestination;
-  FramePtr := @ByteBuf[0];
 
+  { Основной случай — 16-битный PCM стерео: разбираем отсчёты напрямую,
+    без вызова DecodeSample на каждый из них (в общем случае это 8
+    вызовов на кадр — 4 канала × 2 файла). Арифметика ровно та же
+    (SmallInt / 32768.0 в Double с присваиванием в Single), поэтому
+    результат побитово совпадает с общим путём. }
+  if (FEncoding = wePCM) and (FBitsPerSample = 16) and (FChannels = 2) then
+  begin
+    P := PSample16(@FByteBuf[0]);
+    I := FramesRead * 2;
+    while I > 0 do
+    begin
+      S1 := P^; Inc(P);
+      S2 := P^; Inc(P);
+      Dst^ := S1 / 32768.0; Inc(Dst);
+      Dst^ := S2 / 32768.0; Inc(Dst);
+      Dec(I, 2);
+    end;
+    Result := FramesRead;
+    Exit;
+  end;
+
+  FramePtr := @FByteBuf[0];
   for var Frame := 0 to FramesRead - 1 do
   begin
     for Ch := 0 to FChannels - 1 do

@@ -5,7 +5,16 @@ interface
 uses
   System.SysUtils;
 
+const
+  MaxEodChunkSize = 1048576;
+
 type
+
+  { Ошибка с указанием стадии/блока, где что-то сломалось. Отдельный класс
+    нужен, чтобы обработчики в Detection.ProminenceCache не оборачивали
+    уже описанную ошибку второй раз, а Detection.Detector мог отличить
+    такую ошибку от отмены (EAbort). }
+  EStageError = class(Exception);
 
   TWaveEnvelopePoint = packed record
     StartPosition: Int64;
@@ -80,6 +89,7 @@ type
     ExtractionBefore: Integer;
     ExtractionAfter: Integer;
     ChunkSize: Integer;
+    OverviewMaxSeconds: Int64;
     DuplicateDistance: Int64;
     { При клике по обзору переводить вид к ближайшему пику, а не к точке
       клика. По умолчанию включено (настраивается в config.json). }
@@ -105,6 +115,7 @@ begin
   Result.ExtractionBefore := 30;
   Result.ExtractionAfter := 30;
   Result.ChunkSize := 65536;
+  Result.OverviewMaxSeconds := 600;
   Result.DuplicateDistance := 5;
   Result.OverviewSnapToPeak := True;
 end;

@@ -3,7 +3,7 @@
 interface
 
 uses
-  System.Classes, System.SyncObjs, System.SysUtils;
+  System.Classes, System.SyncObjs, System.SysUtils, Core.Log;
 
 type
   { Базовый класс для фоновых воркеров GUI.
@@ -85,6 +85,7 @@ procedure TEodBackgroundThread.Execute;
 begin
   FCanceled := False;
   FErrorText := '';
+  LogWrite(ClassName + ': старт');
   try
     try
       RunTask;
@@ -93,13 +94,18 @@ begin
         FCanceled := True;
       on E: Exception do
       begin
-        FErrorText := E.Message;
+        { С классом исключения: по одному тексту не отличить
+          EOutOfMemory / EAccessViolation / EReadError. }
+        FErrorText := E.ClassName + ': ' + E.Message;
         FCanceled := CancelRequested;
+        LogWrite(ClassName + ': ошибка — ' + FErrorText);
       end;
     end;
   finally
     if CancelRequested then
       FCanceled := True;
+    LogWriteFmt('%s: завершение, отменено=%s, ошибка="%s"',
+      [ClassName, BoolToStr(FCanceled, True), FErrorText]);
     try
       TThread.Synchronize(Self, DoFinished);
     except

@@ -74,8 +74,11 @@ Cache level 0 … N
 
 `config.json` рядом с exe (`Core.ConfigStore`). Поля — `TEodDetectorConfig`:
 `PeakProminence`, `CorrelationThreshold`, `WindowBefore/After`,
-`ExtractionBefore/After`, `ChunkSize`, `DuplicateDistance`.
-При отсутствии/повреждении файла молча используются значения по умолчанию.
+`ExtractionBefore/After`, `ChunkSize`, `DuplicateDistance`,
+`OverviewMaxSeconds` (лимит автоматического построения overview в секундах;
+`0` отключает автоматический запуск). `ChunkSize` ограничен диапазоном
+1024…1048576. Для больших WAV overview можно построить кнопкой «Обзор»;
+при отсутствии/повреждении файла молча используются значения по умолчанию.
 
 ## Электродная геометрия и локализация рыбы (в разработке)
 

@@ -23,6 +23,7 @@ type
     FEdWindowBefore: TEdit;
     FEdWindowAfter: TEdit;
     FEdChunkSize: TEdit;
+    FEdOverviewMaxSeconds: TEdit;
     FEdDuplicateDistance: TEdit;
     FErrorLabel: TLabel;
 
@@ -56,7 +57,7 @@ begin
 
   Caption := 'Detector settings';
   Width := 380;
-  Height := 330;
+  Height := 370;
   Position := TFormPosition.OwnerFormCenter;
   BorderStyle := TFmxFormBorderStyle.Single;
 
@@ -106,6 +107,8 @@ begin
     IntToStr(FConfig.WindowAfter));
   FEdChunkSize := AddRow(Y, 'Analysis chunk size',
     IntToStr(FConfig.ChunkSize));
+  FEdOverviewMaxSeconds := AddRow(Y, 'Auto overview limit (s, 0=off)',
+    IntToStr(FConfig.OverviewMaxSeconds));
   FEdDuplicateDistance := AddRow(Y, 'Duplicate distance (samples)',
     IntToStr(FConfig.DuplicateDistance));
 
@@ -143,7 +146,7 @@ var
   FmtSettings: TFormatSettings;
   DProminence, DThreshold: Double;
   IWindowBefore, IWindowAfter, IChunkSize: Integer;
-  IDuplicateDistance: Int64;
+  IOverviewMaxSeconds, IDuplicateDistance: Int64;
 begin
   Result := False;
   ErrorMsg := '';
@@ -176,9 +179,18 @@ begin
     Exit;
   end;
 
-  if not TryStrToInt(FEdChunkSize.Text, IChunkSize) or (IChunkSize < 1024) then
+  if not TryStrToInt(FEdChunkSize.Text, IChunkSize) or
+    (IChunkSize < 1024) or (IChunkSize > MaxEodChunkSize) then
   begin
-    ErrorMsg := 'Chunk size must be an integer >= 1024.';
+    ErrorMsg := Format('Chunk size must be an integer between 1024 and %d.',
+      [MaxEodChunkSize]);
+    Exit;
+  end;
+
+  if not TryStrToInt64(FEdOverviewMaxSeconds.Text, IOverviewMaxSeconds) or
+    (IOverviewMaxSeconds < 0) then
+  begin
+    ErrorMsg := 'Auto overview limit must be a non-negative integer.';
     Exit;
   end;
 
@@ -194,6 +206,7 @@ begin
   AConfig.WindowBefore := IWindowBefore;
   AConfig.WindowAfter := IWindowAfter;
   AConfig.ChunkSize := IChunkSize;
+  AConfig.OverviewMaxSeconds := IOverviewMaxSeconds;
   AConfig.DuplicateDistance := IDuplicateDistance;
   { ExtractionBefore/After are not exposed here yet; keep the
     previous/default values. }

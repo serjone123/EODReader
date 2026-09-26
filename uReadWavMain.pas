@@ -8,6 +8,7 @@ uses
   FMX.ListBox, FMX.Layouts, FMX.Dialogs, FMX.SpinBox
 , System.Classes, FMX.Controls.Presentation
 , Core.Types
+, Core.Log
 , Detection.Detector
 , IO.PeakStore
 , GUI.Model
@@ -82,6 +83,7 @@ type
     procedure edStartSampleChange(Sender: TObject);
     procedure edEndSampleChange(Sender: TObject);
     procedure FSettingsButtonClick(Sender: TObject);
+    procedure FBuildOverviewButtonClick(Sender: TObject);
     procedure FPlayButtonClick(Sender: TObject);
     procedure lbPeakListClick(Sender: TObject);
     procedure PlaySpeedBoxChange(Sender: TObject);
@@ -96,6 +98,7 @@ type
     FBackground: TEodAnalysisController;
 
     FOverviewController: TEodOverviewController;
+    FBuildOverviewButton: TButton;
 
     FPeakList: TEodPeakList;
 
@@ -115,6 +118,7 @@ type
 
     procedure UpdateStatus(const S: string);
     procedure UpdateCaption;
+    function ShouldBuildOverview: Boolean;
     function CurrentFrame: Int64;
     function ReadInt64Edit(AEdit: TEdit; const ADefault: Int64): Int64;
     procedure SetRangeEdits(AStart, AEnd: Int64);
@@ -204,6 +208,20 @@ begin
     OverviewClick,
     OverviewRangeSelected,
     BackgroundCloseRequest);
+
+  FBuildOverviewButton := TButton.Create(Self);
+  FBuildOverviewButton.Parent := layLeft;
+  FBuildOverviewButton.Align := TAlignLayout.Top;
+  FBuildOverviewButton.Margins.Left := 4;
+  FBuildOverviewButton.Margins.Top := 4;
+  FBuildOverviewButton.Margins.Bottom := 4;
+  FBuildOverviewButton.Position.X := 4;
+  FBuildOverviewButton.Position.Y := 276;
+  FBuildOverviewButton.Width := 61;
+  FBuildOverviewButton.Height := 26;
+  FBuildOverviewButton.Text := 'Обзор';
+  FBuildOverviewButton.OnClick := FBuildOverviewButtonClick;
+  FBuildOverviewButton.Enabled := False;
 
   { edRange — производный индикатор только для чтения: End - Start.
     Обработчики назначены кодом, а не через .fmx, чтобы не зависеть от
@@ -373,6 +391,23 @@ begin
     FView.CurrentPeak := -1;
     lbPeakList.Clear;
     UpdateStatus('Analysis error: ' + ErrorText);
+    { Текст ошибки длинный (стадия, блок, диапазон кадров) и в строке
+      состояния обрезается — показываем его в диалоге, его можно скопировать.
+
+      ВАЖНО: шестой параметр (пустой анонимный обработчик) нельзя убирать.
+      Без него вызов не разрешается, и вместе с ним перестают разрешаться
+      оба других вызова TDialogService.MessageDialog в этом же модуле —
+      компилятор падает с E2250 на всех трёх. }
+    TDialogService.MessageDialog(
+      'Ошибка анализа:' + sLineBreak + ErrorText + sLineBreak + sLineBreak +
+        'Подробности в журнале: ' + LogFilePath,
+      TMsgDlgType.mtError,
+      [TMsgDlgBtn.mbOk],
+      TMsgDlgBtn.mbOk,
+      0,
+      procedure(const AResult: TModalResult)
+      begin
+      end);
   end
   else
   begin
@@ -428,6 +463,8 @@ begin
   FPositionBar.Enabled := not Analyzing;
   FPlayButton.Enabled := not Analyzing and (FSession.Mode <> dmNone);
   FPlaySpeedBox.Enabled := not Analyzing;
+  FBuildOverviewButton.Enabled := not Analyzing and
+    (FSession.Mode = dmWav) and (FSession.TotalFrames > 0);
 
   FAnalyzeButton.Enabled := True;
 
@@ -435,6 +472,24 @@ begin
     FAnalyzeButton.Text := 'Cancel analysis'
   else
     FAnalyzeButton.Text := 'Analyze WAV';
+end;
+
+function TMainForm.ShouldBuildOverview: Boolean;
+begin
+  Result := False;
+  if (FConfig.OverviewMaxSeconds > 0) and
+    (FSession.SampleRate > 0) and (FSession.TotalFrames > 0) then
+    Result := FSession.TotalFrames / FSession.SampleRate <=
+      FConfig.OverviewMaxSeconds;
+end;
+
+procedure TMainForm.FBuildOverviewButtonClick(Sender: TObject);
+begin
+  if (FSession.Mode <> dmWav) or (FSession.TotalFrames <= 0) then
+    Exit;
+  if FOverviewController.AnyRunning then
+    Exit;
+  FOverviewController.StartOverview;
 end;
 
 procedure TMainForm.OpenProgress(Stage: Integer;
@@ -450,6 +505,7 @@ procedure TMainForm.OpenFinished(Session: TEodGuiSession;
 var
   OldSession: TEodGuiSession;
   Events: TElectrodeEventArray;
+  AutoOverview: Boolean;
 begin
   if FBackground.Closing then
   begin
@@ -486,7 +542,12 @@ begin
     FPlot.SetFullRange(0, FSession.TotalFrames - 1);
   end;
 
-  FOverviewController.StartOverview;
+  AutoOverview := ShouldBuildOverview;
+  if AutoOverview then
+    FOverviewController.StartOverview
+  else
+    FOverviewController.ClearOverview;
+  FBuildOverviewButton.Enabled := FSession.TotalFrames > 0;
   OldSession.Free;
 
   FSession.SetPeaks(nil);
@@ -510,6 +571,8 @@ begin
   UpdateStatus(Format('WAV: %.3f sec, %d Hz, %d frames',
     [FSession.TotalFrames / FSession.SampleRate, FSession.SampleRate,
     FSession.TotalFrames]));
+  if not AutoOverview then
+    UpdateStatus('Автоматический обзор пропущен для большой записи. Нажмите «Обзор» для построения.');
 
   UpdateCaption;
 end;
@@ -779,6 +842,7 @@ var
   StartFrame, EndFrame: Int64;
 begin
   FPlayer.Stop(False);
+  FBuildOverviewButton.Enabled := False;
 
   D := TOpenDialog.Create(Self);
   try

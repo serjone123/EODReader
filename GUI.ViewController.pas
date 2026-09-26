@@ -268,6 +268,7 @@ var
   FirstIdx, LastIdx: Int64;
   I, N: Integer;
   CountText: string;
+  RangeLimited: Boolean;
 begin
   if FSession.Mode <> dmWav then
     Exit;
@@ -277,6 +278,18 @@ begin
 
   StartFrame := EnsureRange(AStartFrame, Int64(0), FSession.TotalFrames - 1);
   EndFrame := EnsureRange(AEndFrame, StartFrame, FSession.TotalFrames - 1);
+  RangeLimited := EndFrame - StartFrame >= Int64(MaxViewSamples);
+  if RangeLimited then
+  begin
+    EndFrame := StartFrame + MaxViewSamples - 1;
+    if EndFrame > FSession.TotalFrames - 1 then
+    begin
+      EndFrame := FSession.TotalFrames - 1;
+      StartFrame := EndFrame - MaxViewSamples + 1;
+      if StartFrame < 0 then
+        StartFrame := 0;
+    end;
+  end;
 
   Data := FSession.ReadSegment(StartFrame, EndFrame - StartFrame + 1, True);
 
@@ -311,10 +324,14 @@ begin
   RangeChanged(StartFrame, EndFrame);
   UpdateCurrentPeakForView(StartFrame);
 
-  if N <= 1000 then
-    CountText := Format('; %d peaks in selection', [N])
+  if RangeLimited then
+    CountText := '; display range limited'
   else
-    CountText := Format('; >1000 peaks in selection (%d, not listed)', [N]);
+    CountText := '';
+  if N <= 1000 then
+    CountText := CountText + Format('; %d peaks in selection', [N])
+  else
+    CountText := CountText + Format('; >1000 peaks in selection (%d, not listed)', [N]);
 
   Status(Format('Samples %d .. %d  (%d samples, %.6f s .. %.6f s)%s',
     [StartFrame, EndFrame, Length(Data), StartFrame / FSession.SampleRate,
